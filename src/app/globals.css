@@ -1,0 +1,392 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, monospace;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Status colours */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  /* Fixed series colours: products and raw materials keep the same colour everywhere */
+  --color-prod-flyash: var(--prod-flyash);
+  --color-prod-solid: var(--prod-solid);
+  --color-mat-flyash: var(--mat-flyash);
+  --color-mat-cement: var(--mat-cement);
+  --color-mat-msand: var(--mat-msand);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Light theme: warm off-white, slate text, terracotta "brick" brand colour */
+:root {
+  --background: oklch(0.982 0.004 70);
+  --foreground: oklch(0.22 0.02 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 255);
+  --primary: oklch(0.55 0.155 38);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.008 70);
+  --secondary-foreground: oklch(0.26 0.02 255);
+  --muted: oklch(0.96 0.006 70);
+  --muted-foreground: oklch(0.49 0.02 255);
+  --accent: oklch(0.95 0.025 45);
+  --accent-foreground: oklch(0.38 0.11 38);
+  --destructive: oklch(0.56 0.21 25);
+  --border: oklch(0.905 0.01 70);
+  --input: oklch(0.88 0.012 70);
+  --ring: oklch(0.6 0.15 38);
+
+  --success: oklch(0.56 0.13 158);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.72 0.15 70);
+  --warning-foreground: oklch(0.28 0.06 60);
+  --info: oklch(0.56 0.14 250);
+  --info-foreground: oklch(0.99 0 0);
+
+  /* Chart series — validated (CVD ΔE ≥ 8, chroma, contrast) with the dataviz palette checker */
+  --prod-flyash: #eb6834;
+  --prod-solid: #2a78d6;
+  --mat-flyash: #4a3aa7;
+  --mat-cement: #1baf7a;
+  --mat-msand: #eda100;
+  --money-billed: #e87ba4;
+  --money-collected: #008300;
+  --owed: #c03a34;
+  --age-1: #f0928a;
+  --age-2: #e05d55;
+  --age-3: #c03a34;
+  --age-4: #8a1c18;
+  --chart-grid: oklch(0.92 0.006 70);
+
+  --chart-1: oklch(0.6 0.16 38);
+  --chart-2: oklch(0.5 0.13 262);
+  --chart-3: oklch(0.6 0.12 165);
+  --chart-4: oklch(0.74 0.14 75);
+  --chart-5: oklch(0.55 0.15 320);
+
+  --radius: 0.75rem;
+  --sidebar: oklch(0.975 0.006 70);
+  --sidebar-foreground: oklch(0.26 0.02 255);
+  --sidebar-primary: oklch(0.55 0.155 38);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.94 0.025 45);
+  --sidebar-accent-foreground: oklch(0.36 0.11 38);
+  --sidebar-border: oklch(0.91 0.01 70);
+  --sidebar-ring: oklch(0.6 0.15 38);
+}
+
+/* Dark theme: deep slate surfaces, lighter brick for contrast */
+.dark {
+  --background: oklch(0.165 0.012 255);
+  --foreground: oklch(0.965 0.004 70);
+  --card: oklch(0.205 0.014 255);
+  --card-foreground: oklch(0.965 0.004 70);
+  --popover: oklch(0.215 0.014 255);
+  --popover-foreground: oklch(0.965 0.004 70);
+  --primary: oklch(0.69 0.15 42);
+  --primary-foreground: oklch(0.17 0.02 40);
+  --secondary: oklch(0.27 0.014 255);
+  --secondary-foreground: oklch(0.965 0.004 70);
+  --muted: oklch(0.26 0.014 255);
+  --muted-foreground: oklch(0.72 0.015 255);
+  --accent: oklch(0.3 0.04 40);
+  --accent-foreground: oklch(0.93 0.03 50);
+  --destructive: oklch(0.7 0.19 22);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.69 0.15 42);
+
+  --success: oklch(0.7 0.14 158);
+  --success-foreground: oklch(0.16 0.03 160);
+  --warning: oklch(0.8 0.14 75);
+  --warning-foreground: oklch(0.22 0.05 60);
+  --info: oklch(0.7 0.13 250);
+  --info-foreground: oklch(0.16 0.03 250);
+
+  --prod-flyash: #d95926;
+  --prod-solid: #3987e5;
+  --mat-flyash: #9085e9;
+  --mat-cement: #199e70;
+  --mat-msand: #c98500;
+  --money-billed: #d55181;
+  --money-collected: #008300;
+  --owed: #e8807a;
+  --age-1: #a8322d;
+  --age-2: #d1514b;
+  --age-3: #e8807a;
+  --age-4: #f4b3ae;
+  --chart-grid: oklch(1 0 0 / 8%);
+
+  --chart-1: oklch(0.7 0.15 42);
+  --chart-2: oklch(0.68 0.12 262);
+  --chart-3: oklch(0.72 0.12 165);
+  --chart-4: oklch(0.8 0.13 80);
+  --chart-5: oklch(0.7 0.14 320);
+
+  --sidebar: oklch(0.185 0.013 255);
+  --sidebar-foreground: oklch(0.94 0.005 70);
+  --sidebar-primary: oklch(0.69 0.15 42);
+  --sidebar-primary-foreground: oklch(0.17 0.02 40);
+  --sidebar-accent: oklch(0.27 0.03 40);
+  --sidebar-accent-foreground: oklch(0.95 0.02 50);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.69 0.15 42);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+    /* Keep iOS from inflating text when the phone is turned sideways */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  /* No double-tap-to-zoom delay on taps */
+  a,
+  button,
+  input,
+  label,
+  select,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  /* Numbers line up in tables and KPI cards */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* iPhone/iPad Safari zooms into any field under 16px when it's focused. Fields drop to 14px from the
+   md breakpoint (iPad, iPhone Max in landscape), so hold them at 16px on iOS — except the ones that
+   were deliberately made larger. Unlayered so it beats the md:text-sm utility. */
+@supports (-webkit-touch-callout: none) {
+  [data-slot="input"]:not([class*="text-lg"], [class*="text-xl"], [class*="text-2xl"]),
+  [data-slot="textarea"],
+  select {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Print: documents (invoice, challan, statement) print clean on A4 */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Truck maps (Leaflet)                                                 */
+/* ------------------------------------------------------------------ */
+
+/* Keep Leaflet's internal z-indexes (200–1000) from floating above dialogs and the app header. */
+.map-shell {
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
+}
+.map-shell .leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: var(--muted);
+  font-family: inherit;
+  border-radius: inherit;
+}
+.dark .map-shell .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6);
+}
+.map-shell .leaflet-control-attribution {
+  font-size: 10px;
+  background: color-mix(in oklab, var(--card) 80%, transparent);
+  color: var(--muted-foreground);
+}
+.map-shell .leaflet-control-attribution a {
+  color: inherit;
+}
+.map-shell .leaflet-bar a {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.map-shell .leaflet-tooltip {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.map-shell .leaflet-tooltip-top::before {
+  border-top-color: var(--border);
+}
+
+/* Truck marker: coloured disc (arrow when moving) + always-visible label */
+.truck-pin {
+  --pin: var(--muted-foreground);
+  position: relative;
+  width: 34px;
+  height: 34px;
+}
+.truck-pin[data-state="moving"] { --pin: var(--success); }
+.truck-pin[data-state="stopped"] { --pin: var(--warning); }
+.truck-pin[data-state="no_signal"] { --pin: var(--destructive); }
+.truck-pin__disc {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--pin);
+  color: white;
+  border: 3px solid var(--card);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+  transition: transform 0.3s;
+}
+.truck-pin__disc svg {
+  width: 16px;
+  height: 16px;
+}
+.truck-pin[data-selected="true"] .truck-pin__disc {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--pin) 35%, transparent), 0 2px 8px rgb(0 0 0 / 0.3);
+}
+.truck-pin[data-state="moving"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--pin);
+  opacity: 0.35;
+  z-index: -1;
+  animation: truck-ping 1.8s ease-out infinite;
+}
+@keyframes truck-ping {
+  from { transform: scale(1); opacity: 0.4; }
+  to { transform: scale(2.2); opacity: 0; }
+}
+.truck-pin__label {
+  position: absolute;
+  top: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Off-duty trucks usually park together at the factory: show their label on hover/selection only. */
+.truck-pin[data-state="off"]:not([data-selected="true"]):not(:hover) .truck-pin__label {
+  display: none;
+}
+
+/* Day route */
+.route-line { stroke: var(--info); }
+.route-line--fast { stroke: var(--destructive); }
+.route-line--gap { stroke: var(--muted-foreground); stroke-dasharray: 4 8; }
+.route-dot {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid var(--card);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+.route-dot--start { background: var(--success); }
+.route-dot--end { background: var(--foreground); color: var(--background); }
+.route-dot--stop { background: var(--warning); color: var(--warning-foreground); }
+.route-dot--cursor {
+  background: var(--info);
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--info) 30%, transparent), 0 1px 4px rgb(0 0 0 / 0.3);
+}

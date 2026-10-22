@@ -1,0 +1,15 @@
+# Netlify picks up Next.js automatically (OpenNext adapter); this file only adds the
+# database steps. Every deploy brings the schema up to date and makes sure the base data
+# and the two logins exist (both steps are safe to re-run and never touch existing rows).
+#
+# Set these in Netlify → Site configuration → Environment variables before the first deploy:
+#   DATABASE_URL            hosted Postgres URL (not needed if Netlify DB is attached)
+#   SEED_OWNER_PASSWORD     first owner password (the build refuses the defaults)
+#   SEED_EMPLOYEE_PASSWORD  first employee password
+#   DATABASE_POOL_MAX=3     keep each serverless function to a few connections
+[build]
+  command = "npm run db:migrate && npm run db:seed && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"

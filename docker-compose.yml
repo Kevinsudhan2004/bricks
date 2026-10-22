@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bricks-crm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bricks
+      POSTGRES_PASSWORD: bricks_dev_password
+      POSTGRES_DB: bricks_crm
+    ports:
+      - "5433:5432"
+    volumes:
+      - bricks_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bricks -d bricks_crm"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  bricks_pgdata:
