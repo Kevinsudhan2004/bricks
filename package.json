@@ -16,7 +16,8 @@
     "db:seed:demo": "tsx src/db/seed.ts --demo",
     "db:reset": "tsx src/db/reset.ts --yes && npm run db:seed:demo",
     "db:studio": "drizzle-kit studio",
-    "db:seed:trucks": "tsx src/db/seed-trucks.ts"
+    "db:seed:trucks": "tsx src/db/seed-trucks.ts",
+    "deploy:check": "tsx scripts/check-deploy-env.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

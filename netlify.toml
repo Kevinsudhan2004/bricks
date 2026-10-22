@@ -8,7 +8,7 @@
 #   SEED_EMPLOYEE_PASSWORD  first employee password
 #   DATABASE_POOL_MAX=3     keep each serverless function to a few connections
 [build]
-  command = "npm run db:migrate && npm run db:seed && npm run build"
+  command = "npm run deploy:check && npm run db:migrate && npm run db:seed && npm run build"
   publish = ".next"
 
 [build.environment]
