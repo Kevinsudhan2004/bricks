@@ -46,6 +46,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@netlify/database": "^2.0.1",
     "@tailwindcss/turbopack": "^4",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
