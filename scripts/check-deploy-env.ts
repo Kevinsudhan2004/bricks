@@ -17,9 +17,11 @@ if (!url) {
   problems.push("DATABASE_URL points at localhost, which doesn't exist on Netlify. Use a hosted Postgres URL.");
 }
 
+// Say which of the two it is: a missing value is a scope/context problem, a default value just needs replacing.
 for (const name of ["SEED_OWNER_PASSWORD", "SEED_EMPLOYEE_PASSWORD"]) {
   const value = process.env[name];
-  if (!value || value.startsWith("change-me")) problems.push(`${name} is not set to a real password (it creates the first login).`);
+  if (!value) problems.push(`${name} isn't available to the build. Set it to a real password with the Builds scope included.`);
+  else if (value.startsWith("change-me")) problems.push(`${name} is still the change-me-… default. Replace it with a real password (it creates the first login).`);
 }
 
 if (problems.length) {
