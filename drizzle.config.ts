@@ -1,5 +1,6 @@
 import { loadEnvConfig } from "@next/env";
 import { defineConfig } from "drizzle-kit";
+import { databaseUrl } from "./src/db/script-db";
 
 loadEnvConfig(process.cwd());
 
@@ -7,8 +8,8 @@ export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./src/db/migrations",
   dialect: "postgresql",
-  // Migrations go over a direct (unpooled) connection when Netlify DB provides one.
-  dbCredentials: { url: (process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL_UNPOOLED || process.env.NETLIFY_DATABASE_URL)! },
+  // Same lookup as src/db/script-db.ts; on Netlify an attached database supplies the URL.
+  dbCredentials: { url: databaseUrl()! },
   strict: true,
   verbose: true,
 });

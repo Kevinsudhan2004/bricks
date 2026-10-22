@@ -3,7 +3,8 @@
 # and the two logins exist (both steps are safe to re-run and never touch existing rows).
 #
 # Set these in Netlify → Site configuration → Environment variables before the first deploy:
-#   DATABASE_URL            hosted Postgres URL (not needed if Netlify DB is attached)
+#   DATABASE_URL            hosted Postgres URL (not needed when Netlify Database is created
+#                           under Data & Storage → Database; it provides NETLIFY_DB_URL)
 #   SEED_OWNER_PASSWORD     first owner password (the build refuses the defaults)
 #   SEED_EMPLOYEE_PASSWORD  first employee password
 #   DATABASE_POOL_MAX=3     keep each serverless function to a few connections

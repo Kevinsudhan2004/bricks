@@ -111,12 +111,12 @@ The app is standard Next.js plus PostgreSQL. You can run it on a VPS with Docker
 
 `netlify.toml` is already set up. Netlify builds Next.js on its own, and every deploy also runs `db:migrate` and `db:seed`. Both are safe to re-run: they add what's missing and never change existing rows or passwords.
 
-1. **Add a database.** Either attach **Netlify DB** (Extensions → Neon), which sets `NETLIFY_DATABASE_URL` for you, or create a Postgres elsewhere (Neon, Supabase…) and set its URL as `DATABASE_URL`.
+1. **Add a database.** In the project, open **Data & Storage → Database → Create a database manually**. Netlify Database provides `NETLIFY_DB_URL`, which the app picks up, and gives each deploy preview its own copy. Or create a Postgres elsewhere (Neon, Supabase…) and set its URL as `DATABASE_URL`.
 2. **Set the environment variables** in Site configuration → Environment variables:
 
    | Variable | Value |
    |---|---|
-   | `DATABASE_URL` | Postgres URL with `?sslmode=require` (skip if Netlify DB is attached) |
+   | `DATABASE_URL` | Postgres URL with `?sslmode=require` (skip if you created a Netlify Database) |
    | `SEED_OWNER_USERNAME` / `SEED_OWNER_PASSWORD` | First owner login. The build stops if the password is still the `change-me-…` default |
    | `SEED_EMPLOYEE_USERNAME` / `SEED_EMPLOYEE_PASSWORD` | First employee login |
    | `DATABASE_POOL_MAX` | `3`, so each serverless function keeps only a few connections |

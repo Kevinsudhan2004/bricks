@@ -11,7 +11,7 @@ const url = databaseUrl();
 
 if (!url) {
   problems.push(
-    "No database. Attach Netlify DB (Extensions → Neon), or set DATABASE_URL to a hosted Postgres URL (…?sslmode=require).",
+    "No database. Create one in Data & Storage → Database → Create a database manually, or set DATABASE_URL to a hosted Postgres URL (…?sslmode=require).",
   );
 } else if (isLocalDatabase(url)) {
   problems.push("DATABASE_URL points at localhost, which doesn't exist on Netlify. Use a hosted Postgres URL.");

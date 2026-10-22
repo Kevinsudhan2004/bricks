@@ -9,9 +9,14 @@ import * as schema from "./schema";
 
 loadEnvConfig(process.cwd());
 
-/** Our own DATABASE_URL, or the one Netlify DB sets when it's attached to the site. */
+/** Our own DATABASE_URL, or the one Netlify sets when a database is attached to the site. */
 export function databaseUrl() {
-  return process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL_UNPOOLED || process.env.NETLIFY_DATABASE_URL;
+  return (
+    process.env.DATABASE_URL ||
+    process.env.NETLIFY_DB_URL ||
+    process.env.NETLIFY_DATABASE_URL_UNPOOLED ||
+    process.env.NETLIFY_DATABASE_URL
+  );
 }
 
 /** True for the Docker database on this machine (dev), false for anything hosted. */

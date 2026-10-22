@@ -3,8 +3,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-// On Netlify, attaching Netlify DB sets NETLIFY_DATABASE_URL instead.
-const connectionString = process.env.DATABASE_URL || process.env.NETLIFY_DATABASE_URL;
+// On Netlify, an attached database sets NETLIFY_DB_URL (Netlify Database) or NETLIFY_DATABASE_URL (Neon extension).
+const connectionString = process.env.DATABASE_URL || process.env.NETLIFY_DB_URL || process.env.NETLIFY_DATABASE_URL;
 if (!connectionString) {
   throw new Error("DATABASE_URL is not set. Copy .env.example to .env.local and fill it in.");
 }
