@@ -2,6 +2,7 @@
  * Seed the database.
  *   npm run db:seed        → company profile, products, materials, mix and the two logins
  *   npm run db:seed:demo   → the above + ~75 days of realistic demo activity (for trying the app)
+ *   SEED_DEMO_TRUCKS=true  → also add the demo trucks (a week of GPS history) when there are no trucks yet
  *
  * Safe to re-run: base data is upserted, demo data is skipped if invoices already exist.
  */
@@ -638,8 +639,10 @@ async function seedDemo(dbx: Db) {
 
 async function main() {
   await seedBase();
-  if (process.argv.includes("--demo")) {
-    await db.transaction(async (tx) => seedDemo(tx as unknown as Db));
+  const demo = process.argv.includes("--demo");
+  if (demo) await db.transaction(async (tx) => seedDemo(tx as unknown as Db));
+  // The trucks alone can be turned on for a hosted database (netlify.toml) to show tracking without demo sales.
+  if (demo || process.env.SEED_DEMO_TRUCKS === "true") {
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(s.trucks);
     if (n === 0) {
       const r = await seedDemoTrucks(db);

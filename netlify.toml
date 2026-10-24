@@ -16,3 +16,6 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Adds 4 demo trucks with a week of GPS history, only while the database has no trucks.
+  # Delete this line once real driver phones are linked, and hide the demo trucks (edit the truck).
+  SEED_DEMO_TRUCKS = "true"
