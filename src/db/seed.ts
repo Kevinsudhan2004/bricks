@@ -2,7 +2,7 @@
  * Seed the database.
  *   npm run db:seed        → company profile, products, materials, mix and the two logins
  *   npm run db:seed:demo   → the above + ~75 days of realistic demo activity (for trying the app)
- *   SEED_DEMO_TRUCKS=true  → also add the demo trucks (a week of GPS history) when there are no trucks yet
+ *   SEED_DEMO_TRUCKS=true  → also add the demo trucks (a week of GPS history) if they aren't there yet
  *
  * Safe to re-run: base data is upserted, demo data is skipped if invoices already exist.
  */
@@ -12,7 +12,7 @@ import { addDays, daysBetween, DEFAULT_TZ, financialYear, todayIn } from "../dom
 import { DOC_PREFIX, formatDocNo } from "../domain/doc-numbers";
 import { computeInvoiceTotals } from "../domain/invoice";
 import { round2 } from "../domain/money";
-import { seedDemoTrucks } from "./demo-trucks";
+import { DEMO_TRUCK_PLATES, seedDemoTrucks } from "./demo-trucks";
 import * as s from "./schema";
 import { connect, isLocalDatabase } from "./script-db";
 
@@ -643,10 +643,16 @@ async function main() {
   if (demo) await db.transaction(async (tx) => seedDemo(tx as unknown as Db));
   // The trucks alone can be turned on for a hosted database (netlify.toml) to show tracking without demo sales.
   if (demo || process.env.SEED_DEMO_TRUCKS === "true") {
-    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(s.trucks);
+    // Keyed on the demo plates, so they're added once even when real trucks already exist.
+    const [{ n }] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(s.trucks)
+      .where(inArray(s.trucks.plateNo, DEMO_TRUCK_PLATES));
     if (n === 0) {
       const r = await seedDemoTrucks(db);
       console.log(`✓ Demo trucks: ${r.trucks} trucks, ${r.points.toLocaleString("en-IN")} GPS points.`);
+    } else {
+      console.log("• Demo trucks skipped: they're already there.");
     }
   }
   await client.end();

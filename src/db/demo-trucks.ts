@@ -116,6 +116,9 @@ const TRUCKS = [
 
 const at = (dayStart: number, hours: number) => dayStart + hours * 3_600_000;
 
+/** Plate numbers of the demo trucks, to tell whether they've already been added. */
+export const DEMO_TRUCK_PLATES = TRUCKS.map((t) => t.plateNo);
+
 export async function seedDemoTrucks(db: Db, opts: { now?: number; days?: number } = {}) {
   const now = opts.now ?? Date.now();
   const today = todayIn(DEFAULT_TZ, new Date(now));
