@@ -7,7 +7,7 @@ import { getAuditLog } from "@/server/queries/audit";
 
 export const metadata: Metadata = { title: "Activity log · Settings" };
 
-const TONE = { create: "success", update: "info", delete: "danger", cancel: "danger", login: "muted", logout: "muted" } as const;
+const TONE = { create: "success", update: "info", delete: "danger", cancel: "danger", close: "success", reopen: "warning", login: "muted", logout: "muted" } as const;
 
 export default function AuditPage() {
   return (

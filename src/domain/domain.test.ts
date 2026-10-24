@@ -11,6 +11,7 @@ import {
   paymentStatus,
 } from "./invoice";
 import { buildLedger, ledgerTotals } from "./ledger";
+import { billCloseBlocker, docState, isSettled, orderCloseBlocker } from "./settlement";
 import { round2 } from "./money";
 import { daysOfStockLeft, finishedGoodsStock, materialConsumption, rawMaterialStock } from "./stock";
 
@@ -239,5 +240,48 @@ describe("ageing", () => {
       "2026-10-09",
     );
     expect(buckets.map((b) => b.amount)).toEqual([1000, 2000, 3000, 4000]);
+  });
+});
+
+describe("closing orders and supplier bills", () => {
+  const order = { cancelled: false, closed: false, pending: 0, balance: 0 };
+
+  it("treats a balance within a paisa as settled", () => {
+    expect(isSettled(0)).toBe(true);
+    expect(isSettled(0.004)).toBe(true);
+    expect(isSettled(-0.001)).toBe(true);
+    expect(isSettled(0.01)).toBe(false);
+    expect(isSettled(-5)).toBe(false);
+  });
+
+  it("derives the state from cancelled / closed", () => {
+    expect(docState({ cancelled: false, closedAt: null })).toBe("ongoing");
+    expect(docState({ cancelled: false, closedAt: "2026-10-01T10:00:00Z" })).toBe("closed");
+    expect(docState({ cancelled: true, closedAt: null })).toBe("cancelled");
+  });
+
+  it("completes an order only when fully delivered and debit = credit", () => {
+    expect(orderCloseBlocker(order)).toBeNull();
+    // Paid in full but bricks still owed
+    expect(orderCloseBlocker({ ...order, pending: 2000 })).toMatch(/2,000 bricks are still to be delivered/);
+    // Delivered but money still due
+    expect(orderCloseBlocker({ ...order, balance: 1500 })).toMatch(/₹1,500 is still due/);
+    // Customer paid more than billed: debit and credit still don't match
+    expect(orderCloseBlocker({ ...order, balance: -250 })).toMatch(/₹250 more was received/);
+    expect(orderCloseBlocker({ ...order, cancelled: true })).toMatch(/cancelled/);
+    expect(orderCloseBlocker({ ...order, closed: true })).toMatch(/already completed/);
+  });
+
+  it("closes a supplier bill only when what we owe is zero", () => {
+    const bill = { cancelled: false, closed: false, balance: 0 };
+    expect(billCloseBlocker(bill)).toBeNull();
+    expect(billCloseBlocker({ ...bill, balance: 12000.5 })).toMatch(/₹12,000.5 is still to be paid/);
+    expect(billCloseBlocker({ ...bill, balance: -100 })).toMatch(/more was paid than billed/);
+    expect(billCloseBlocker({ ...bill, closed: true })).toMatch(/already closed/);
+  });
+
+  it("uses the same balance formula for bills: total + debits − credits − paid", () => {
+    // ₹1,00,000 bill, supplier adds ₹2,000 transport, gives ₹3,000 short-weight credit, we paid ₹99,000
+    expect(invoiceBalance({ total: 100000, debits: 2000, credits: 3000, paid: 99000 })).toBe(0);
   });
 });

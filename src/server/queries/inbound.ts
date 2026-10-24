@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { db } from "@/db";
-import { inboundEntries, materials, suppliers, users } from "@/db/schema";
+import { inboundEntries, materials, purchaseBills, suppliers, users } from "@/db/schema";
 import { getCurrentUser, requireOwner } from "@/lib/auth";
 import { TAG } from "@/server/tags";
 
@@ -10,7 +10,7 @@ const LIST_LIMIT = 500;
 
 async function loadInbound(from: string, to: string, materialId: number | null) {
   "use cache";
-  cacheTag(TAG.inbound, TAG.masters);
+  cacheTag(TAG.inbound, TAG.masters, TAG.purchases);
   cacheLife("live");
   const where = and(
     isNull(inboundEntries.deletedAt),
@@ -35,6 +35,8 @@ async function loadInbound(from: string, to: string, materialId: number | null) 
         netKg: inboundEntries.netKg,
         ratePerTon: inboundEntries.ratePerTon,
         amount: inboundEntries.amount,
+        purchaseBillId: inboundEntries.purchaseBillId,
+        billNo: purchaseBills.billNo,
         remarks: inboundEntries.remarks,
         createdBy: inboundEntries.createdBy,
         createdByName: users.name,
@@ -43,6 +45,7 @@ async function loadInbound(from: string, to: string, materialId: number | null) 
       .from(inboundEntries)
       .innerJoin(materials, eq(materials.id, inboundEntries.materialId))
       .leftJoin(suppliers, eq(suppliers.id, inboundEntries.supplierId))
+      .leftJoin(purchaseBills, eq(purchaseBills.id, inboundEntries.purchaseBillId))
       .innerJoin(users, eq(users.id, inboundEntries.createdBy))
       .where(where)
       .orderBy(desc(inboundEntries.entryDate), desc(inboundEntries.createdAt))
@@ -70,7 +73,7 @@ export async function getInboundList(from: string, to: string, materialId: numbe
   if (user.role === "owner") return data;
   return {
     ...data,
-    rows: data.rows.map((r) => ({ ...r, ratePerTon: null, amount: null })),
+    rows: data.rows.map((r) => ({ ...r, ratePerTon: null, amount: null, billNo: null })),
     totals: data.totals.map((t) => ({ ...t, amount: 0 })),
   };
 }

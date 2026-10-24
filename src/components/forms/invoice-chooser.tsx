@@ -4,7 +4,9 @@ import { cn } from "@/lib/utils";
 import { formatDate, formatINR } from "@/lib/format";
 import type { InvoiceBalanceOption } from "@/server/queries/money";
 
-/** Pick one of the customer's invoices (with balance) or "no specific invoice". */
+type Option = InvoiceBalanceOption & { sub?: string };
+
+/** Pick one of the customer's orders (or a supplier's bills) with a balance, or "none in particular". */
 export function InvoiceChooser({
   invoices,
   value,
@@ -12,17 +14,19 @@ export function InvoiceChooser({
   noneLabel,
   noneHint,
   onlyDue = true,
+  label = "Order",
 }: {
-  invoices: InvoiceBalanceOption[];
+  invoices: Option[];
   value: number | undefined;
   onChange: (id: number | undefined) => void;
   noneLabel: string;
   noneHint: string;
   onlyDue?: boolean;
+  label?: string;
 }) {
   const list = onlyDue ? invoices.filter((i) => i.balance > 0 || i.id === value) : invoices;
   return (
-    <div role="radiogroup" aria-label="Order" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <div role="radiogroup" aria-label={label} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {list.map((inv) => {
         const selected = inv.id === value;
         return (
@@ -41,10 +45,11 @@ export function InvoiceChooser({
               <span className="font-mono text-xs font-medium">{inv.invoiceNo}</span>
               <span className="text-xs text-muted-foreground">{formatDate(inv.invoiceDate)}</span>
             </span>
+            {inv.sub && <span className="block truncate text-xs text-muted-foreground">{inv.sub}</span>}
             <span className="mt-1 flex items-baseline justify-between gap-2">
               <span className="text-xs text-muted-foreground">Total {formatINR(inv.total, { decimals: false })}</span>
               <span className={cn("num text-sm font-semibold", inv.overdue && "text-destructive")}>
-                {inv.balance > 0 ? `${formatINR(inv.balance)} due` : "Paid"}
+                {inv.balance > 0 ? `${formatINR(inv.balance)} due` : inv.balance < 0 ? `${formatINR(-inv.balance)} extra` : "Settled"}
               </span>
             </span>
           </button>

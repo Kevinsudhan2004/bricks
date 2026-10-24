@@ -8,6 +8,7 @@ import { formatINR } from "@/lib/format";
 import { deleteSchema, noteSchema, paymentSchema } from "@/lib/validators";
 import { expire, parseInput, runAction, UserError, type ActionResult } from "@/server/action-utils";
 import { audit } from "@/server/audit";
+import { lockOrderForChange } from "@/server/closing";
 import { nextDocNumber } from "@/server/doc-numbers";
 import { actionToday } from "@/server/permissions";
 import { TAG } from "@/server/tags";
@@ -36,6 +37,7 @@ export async function createPayment(input: unknown): Promise<ActionResult<{ id: 
     const { customer, invoice } = await checkCustomerInvoice(data.customerId, data.invoiceId);
 
     const result = await db.transaction(async (tx) => {
+      if (invoice) await lockOrderForChange(tx, invoice.id);
       const receiptNo = await nextDocNumber(tx, "receipt", data.paymentDate);
       const [row] = await tx
         .insert(payments)
@@ -73,6 +75,7 @@ export async function deletePayment(input: unknown): Promise<ActionResult> {
     const [existing] = await db.select().from(payments).where(and(eq(payments.id, id), isNull(payments.deletedAt)));
     if (!existing) throw new UserError("This payment was already deleted.");
     await db.transaction(async (tx) => {
+      if (existing.invoiceId) await lockOrderForChange(tx, existing.invoiceId);
       await tx.update(payments).set({ deletedAt: new Date(), deleteReason: reason }).where(eq(payments.id, id));
       await audit(tx, {
         userId: user.id,
@@ -100,6 +103,7 @@ export async function createNote(input: unknown): Promise<ActionResult<{ id: num
     const { customer, invoice } = await checkCustomerInvoice(data.customerId, data.invoiceId);
 
     const result = await db.transaction(async (tx) => {
+      if (invoice) await lockOrderForChange(tx, invoice.id);
       const noteNo = await nextDocNumber(tx, data.type === "credit" ? "creditNote" : "debitNote", data.noteDate);
       const [row] = await tx
         .insert(adjustmentNotes)
@@ -140,6 +144,7 @@ export async function deleteNote(input: unknown): Promise<ActionResult> {
       .where(and(eq(adjustmentNotes.id, id), isNull(adjustmentNotes.deletedAt)));
     if (!existing) throw new UserError("This note was already deleted.");
     await db.transaction(async (tx) => {
+      if (existing.invoiceId) await lockOrderForChange(tx, existing.invoiceId);
       await tx.update(adjustmentNotes).set({ deletedAt: new Date(), deleteReason: reason }).where(eq(adjustmentNotes.id, id));
       await audit(tx, {
         userId: user.id,

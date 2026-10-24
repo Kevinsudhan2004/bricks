@@ -101,7 +101,8 @@ async function InboundContent({ searchParams }: { searchParams: Promise<SearchPa
 
       {truncated && <p className="text-sm text-muted-foreground">Showing the latest 500 loads.</p>}
       <InboundTable
-        rows={rows.map((r) => ({ ...r, canEdit: canModifyEntry(user, r, t) }))}
+        // A billed load is part of what you owe the supplier: change it through the bill.
+        rows={rows.map((r) => ({ ...r, canEdit: canModifyEntry(user, r, t) && !r.purchaseBillId }))}
         today={t}
         entryProps={entryProps}
         showMoney={isOwner}

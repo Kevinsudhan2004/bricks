@@ -9,6 +9,7 @@ import { formatNumber } from "@/lib/format";
 import { deleteSchema, dispatchSchema } from "@/lib/validators";
 import { expire, parseInput, runAction, UserError, type ActionResult } from "@/server/action-utils";
 import { audit } from "@/server/audit";
+import { lockOrderForChange } from "@/server/closing";
 import { nextDocNumber } from "@/server/doc-numbers";
 import { assertCanModifyEntry, assertEntryDate } from "@/server/permissions";
 import { TAG } from "@/server/tags";
@@ -28,6 +29,7 @@ async function pendingFor(tx: Tx, data: DispatchData, excludeDispatchId?: number
   if (!inv) throw new UserError("Pick an order.", { invoiceId: "Pick an order" });
   if (inv.customerId !== data.customerId) throw new UserError("That order belongs to a different customer.");
   if (inv.status === "cancelled") throw new UserError("That order was cancelled.");
+  if (inv.closedAt) throw new UserError(`Order ${inv.invoiceNo} is completed. Ask the owner to reopen it first.`);
 
   const ordered = await tx
     .select({ productId: invoiceItems.productId, qty: sql<number>`sum(${invoiceItems.quantity})::int` })
@@ -115,6 +117,8 @@ export async function updateDispatch(id: number, input: unknown): Promise<Action
     assertEntryDate(user, data.dispatchDate, "dispatchDate");
 
     await db.transaction(async (tx) => {
+      // Moving a challan to another order changes what was delivered on the old one too.
+      if (existing.invoiceId !== data.invoiceId) await lockOrderForChange(tx, existing.invoiceId);
       await pendingFor(tx, data, id);
       await tx
         .update(dispatches)
@@ -156,6 +160,7 @@ export async function deleteDispatch(input: unknown): Promise<ActionResult> {
     if (!existing) throw new UserError("This dispatch was already deleted.");
     assertCanModifyEntry(user, existing);
     await db.transaction(async (tx) => {
+      await lockOrderForChange(tx, existing.invoiceId);
       await tx.update(dispatches).set({ deletedAt: new Date(), deleteReason: reason }).where(eq(dispatches.id, id));
       await audit(tx, {
         userId: user.id,

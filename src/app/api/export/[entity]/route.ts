@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { actionUser, AuthError } from "@/lib/auth";
 import { isValidIsoDate, todayIn } from "@/domain/dates";
 import { APP_TIMEZONE } from "@/lib/today";
+import { accountsUnchecked } from "@/server/queries/accounts";
 import { invoiceSummariesUnchecked } from "@/server/queries/invoices";
 import { customerBalancesUnchecked } from "@/server/queries/customers";
 import { getDispatchList } from "@/server/queries/dispatch";
@@ -123,11 +124,29 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/export/[
         "Bricks pending": c.pending,
       }));
       break;
+    case "accounts":
+      rows = (await accountsUnchecked(t)).map((r) => ({
+        Name: r.name,
+        Contact: r.contact,
+        Type: r.kind === "customer" ? "Customer" : "Supplier",
+        Phone: r.phone,
+        "Opening balance": r.openingBalance,
+        Billed: r.billed,
+        "Debit notes / extra charges": r.extra,
+        "Received / paid": r.paid,
+        Credits: r.credits,
+        "They owe you": r.theyOwe,
+        "You owe them": r.weOwe,
+        Overdue: r.overdue,
+        "Ongoing orders / bills": r.ongoing,
+        "Last activity": r.lastActivity,
+      }));
+      break;
     default:
       return NextResponse.json({ error: "Unknown export" }, { status: 404 });
   }
 
-  const name = entity === "customers" ? `customers-${t}.csv` : `${entity}-${from}-to-${to}.csv`;
+  const name = entity === "customers" || entity === "accounts" ? `${entity}-${t}.csv` : `${entity}-${from}-to-${to}.csv`;
   return new NextResponse(`﻿${toCsv(rows)}`, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

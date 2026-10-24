@@ -78,13 +78,13 @@ export async function getNotes(from: string, to: string) {
   return loadNotes(from, to);
 }
 
-/** Every active invoice with its balance, grouped by customer — preloaded into payment/note forms. */
+/** Every ongoing order with its balance, grouped by customer — preloaded into payment/note forms. Completed orders are locked. */
 export async function getInvoiceBalancesByCustomer(today: string) {
   await requireOwner();
   const all = await invoiceSummariesUnchecked({}, today);
   const grouped: Record<number, { id: number; invoiceNo: string; invoiceDate: string; total: number; balance: number; overdue: boolean }[]> = {};
   for (const i of [...all].reverse()) {
-    if (i.cancelled) continue;
+    if (i.state !== "ongoing") continue;
     (grouped[i.customerId] ??= []).push({
       id: i.id,
       invoiceNo: i.invoiceNo,

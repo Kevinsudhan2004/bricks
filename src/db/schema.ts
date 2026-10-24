@@ -154,6 +154,8 @@ export const suppliers = pgTable("suppliers", {
   phone: varchar("phone", { length: 20 }),
   gstin: varchar("gstin", { length: 15 }),
   address: text("address"),
+  /** What we already owed this supplier before using the app (positive = we owe them). */
+  openingBalance: money("opening_balance").notNull().default(0),
   active: boolean("active").notNull().default(true),
   ...timestamps,
 });
@@ -197,8 +199,11 @@ export const inboundEntries = pgTable(
     grossKg: kg("gross_kg"),
     tareKg: kg("tare_kg"),
     netKg: kg("net_kg").notNull(),
+    /** Filled from the supplier bill this load is on (null until it is billed). */
     ratePerTon: money("rate_per_ton"),
     amount: money("amount"),
+    /** The supplier bill that charges for this load. Billed loads can't be edited or deleted. */
+    purchaseBillId: integer("purchase_bill_id").references(() => purchaseBills.id),
     remarks: text("remarks"),
     createdBy: integer("created_by")
       .notNull()
@@ -209,6 +214,7 @@ export const inboundEntries = pgTable(
   (t) => [
     index("inbound_date_idx").on(t.entryDate),
     index("inbound_material_idx").on(t.materialId, t.entryDate),
+    index("inbound_bill_idx").on(t.purchaseBillId),
   ],
 );
 
@@ -266,6 +272,9 @@ export const invoices = pgTable(
     notes: text("notes"),
     status: invoiceStatus("status").notNull().default("active"),
     cancelReason: text("cancel_reason"),
+    /** Set when the owner marks the order completed (all delivered, debit = credit). Null = ongoing. */
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: integer("closed_by").references(() => users.id),
     createdBy: integer("created_by")
       .notNull()
       .references(() => users.id),
@@ -399,6 +408,123 @@ export const adjustmentNotes = pgTable(
   (t) => [
     index("notes_customer_idx").on(t.customerId, t.noteDate),
     index("notes_invoice_idx").on(t.invoiceId),
+  ],
+);
+
+/* ------------------------------------------------------------------ */
+/* Purchases: raw material bills from suppliers, payments made to      */
+/* suppliers and the supplier's credit / debit notes                   */
+/* ------------------------------------------------------------------ */
+
+export const purchaseBills = pgTable(
+  "purchase_bills",
+  {
+    id: serial("id").primaryKey(),
+    /** Our own running number, e.g. PB/26-27/0007. */
+    billNo: varchar("bill_no", { length: 30 }).notNull().unique(),
+    /** The invoice number printed on the supplier's bill. */
+    supplierBillNo: varchar("supplier_bill_no", { length: 40 }),
+    billDate: businessDate("bill_date").notNull(),
+    dueDate: businessDate("due_date"),
+    supplierId: integer("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
+    taxType: taxType("tax_type").notNull().default("intra"),
+    subtotal: money("subtotal").notNull(),
+    transportCharges: money("transport_charges").notNull().default(0),
+    cgst: money("cgst").notNull().default(0),
+    sgst: money("sgst").notNull().default(0),
+    igst: money("igst").notNull().default(0),
+    roundOff: money("round_off").notNull().default(0),
+    total: money("total").notNull(),
+    notes: text("notes"),
+    status: invoiceStatus("status").notNull().default("active"),
+    cancelReason: text("cancel_reason"),
+    /** Set when the owner closes the bill (paid in full, debit = credit). Null = ongoing. */
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: integer("closed_by").references(() => users.id),
+    createdBy: integer("created_by")
+      .notNull()
+      .references(() => users.id),
+    ...timestamps,
+  },
+  (t) => [
+    index("purchase_bills_supplier_idx").on(t.supplierId, t.billDate),
+    index("purchase_bills_date_idx").on(t.billDate),
+  ],
+);
+
+export const purchaseBillItems = pgTable(
+  "purchase_bill_items",
+  {
+    id: serial("id").primaryKey(),
+    billId: integer("bill_id")
+      .notNull()
+      .references(() => purchaseBills.id, { onDelete: "cascade" }),
+    materialId: integer("material_id")
+      .notNull()
+      .references(() => materials.id),
+    quantityKg: kg("quantity_kg").notNull(),
+    ratePerTon: numeric("rate_per_ton", { precision: 10, scale: 2, mode: "number" }).notNull(),
+    gstRate: numeric("gst_rate", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+    /** Taxable value = tonnes × rate per tonne. */
+    amount: money("amount").notNull(),
+  },
+  (t) => [index("purchase_bill_items_bill_idx").on(t.billId)],
+);
+
+export const supplierPayments = pgTable(
+  "supplier_payments",
+  {
+    id: serial("id").primaryKey(),
+    voucherNo: varchar("voucher_no", { length: 30 }).notNull().unique(),
+    paymentDate: businessDate("payment_date").notNull(),
+    supplierId: integer("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
+    /** Null = advance / on-account payment not tied to one bill. */
+    billId: integer("bill_id").references(() => purchaseBills.id),
+    amount: money("amount").notNull(),
+    mode: paymentMode("mode").notNull().default("bank"),
+    reference: text("reference"),
+    remarks: text("remarks"),
+    createdBy: integer("created_by")
+      .notNull()
+      .references(() => users.id),
+    ...timestamps,
+    ...softDelete,
+  },
+  (t) => [
+    index("supplier_payments_supplier_idx").on(t.supplierId, t.paymentDate),
+    index("supplier_payments_bill_idx").on(t.billId),
+    index("supplier_payments_date_idx").on(t.paymentDate),
+  ],
+);
+
+/** Credit = the supplier reduced what we owe (short weight, quality, discount); debit = they added a charge. */
+export const supplierNotes = pgTable(
+  "supplier_notes",
+  {
+    id: serial("id").primaryKey(),
+    noteNo: varchar("note_no", { length: 30 }).notNull().unique(),
+    type: noteType("type").notNull(),
+    noteDate: businessDate("note_date").notNull(),
+    supplierId: integer("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
+    billId: integer("bill_id").references(() => purchaseBills.id),
+    amount: money("amount").notNull(),
+    reason: varchar("reason", { length: 30 }).notNull(),
+    description: text("description"),
+    createdBy: integer("created_by")
+      .notNull()
+      .references(() => users.id),
+    ...timestamps,
+    ...softDelete,
+  },
+  (t) => [
+    index("supplier_notes_supplier_idx").on(t.supplierId, t.noteDate),
+    index("supplier_notes_bill_idx").on(t.billId),
   ],
 );
 
@@ -560,5 +686,6 @@ export type Material = typeof materials.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
+export type PurchaseBill = typeof purchaseBills.$inferSelect;
 export type CompanySettings = typeof companySettings.$inferSelect;
 export type Truck = typeof trucks.$inferSelect;

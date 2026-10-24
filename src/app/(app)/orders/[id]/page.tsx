@@ -2,24 +2,26 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileMinus, FilePlus, IndianRupee, MapPin, Pencil, Phone, Printer, Truck } from "lucide-react";
+import { CheckCircle2, Circle, FileMinus, FilePlus, IndianRupee, Lock, MapPin, Pencil, Phone, Printer, Truck } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/common/page-header";
 import { ListSkeleton } from "@/components/common/skeletons";
-import { DeliveryBadge, PaymentBadge, Pill } from "@/components/common/status-badge";
+import { DeliveryBadge, PaymentBadge, Pill, StateBadge } from "@/components/common/status-badge";
 import { NewEntryButton } from "@/components/entry/quick-entry";
+import { CloseButton, ReopenButton } from "@/components/forms/close-buttons";
 import { DeleteButton } from "@/components/forms/delete-button";
 import { deliveryProgress, deliveryStatus, invoiceBalance, paymentStatus } from "@/domain/invoice";
 import { round2 } from "@/domain/money";
+import { docState, isSettled, orderCloseBlocker } from "@/domain/settlement";
 import { productColor } from "@/lib/colors";
-import { formatDate, formatINR, formatNumber, pct } from "@/lib/format";
+import { formatDate, formatDateTime, formatINR, formatNumber, pct } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
 import { today } from "@/lib/today";
 import { canModifyEntry } from "@/server/permissions";
 import { NOTE_REASONS } from "@/lib/validators";
-import { cancelInvoice } from "@/server/actions/invoices";
+import { cancelInvoice, closeInvoices, reopenInvoice } from "@/server/actions/invoices";
 import { getInvoiceDetail } from "@/server/queries/invoices";
 
 export const metadata: Metadata = { title: "Order" };
@@ -51,6 +53,11 @@ async function InvoiceContent({ params }: { params: Promise<{ id: string }> }) {
   const balance = invoiceBalance(money);
   const dStatus = deliveryStatus(progress.ordered, progress.delivered, cancelled);
   const pStatus = paymentStatus({ ...money, dueDate: inv.dueDate, today: t, cancelled });
+  const state = docState({ cancelled, closedAt: inv.closedAt });
+  const ongoing = state === "ongoing";
+  const closeBlocker = orderCloseBlocker({ cancelled, closed: !ongoing, pending: progress.pending, balance });
+  const billedTotal = round2(inv.total + debits);
+  const receivedTotal = round2(paid + credits);
   const customerName = inv.customer.firmName ?? inv.customer.name;
   const dispatchHref = `/dispatch?order=${inv.id}`;
   const productName = new Map(inv.items.map((i) => [i.productId, i.productName]));
@@ -71,9 +78,10 @@ async function InvoiceContent({ params }: { params: Promise<{ id: string }> }) {
               <span className="font-medium text-foreground">{customerName}</span>
             )}
             <span>· ordered {formatDate(inv.invoiceDate)}</span>
-            {isOwner && inv.dueDate && <span>· payment due {formatDate(inv.dueDate)}</span>}
-            <DeliveryBadge status={dStatus} />
-            {isOwner && <PaymentBadge status={pStatus} />}
+            {isOwner && inv.dueDate && ongoing && <span>· payment due {formatDate(inv.dueDate)}</span>}
+            <StateBadge state={state} ready={isOwner && ongoing && !closeBlocker} />
+            {ongoing && <DeliveryBadge status={dStatus} />}
+            {isOwner && ongoing && <PaymentBadge status={pStatus} />}
           </span>
         }
         actions={
@@ -85,14 +93,14 @@ async function InvoiceContent({ params }: { params: Promise<{ id: string }> }) {
                 </a>
               </Button>
             )}
-            {!cancelled && canModifyEntry(user, inv, t) && (
+            {ongoing && canModifyEntry(user, inv, t) && (
               <Button asChild variant="outline">
                 <Link href={`/orders/${inv.id}/edit`}>
                   <Pencil aria-hidden /> Edit
                 </Link>
               </Button>
             )}
-            {isOwner && !cancelled && inv.dispatches.length === 0 && inv.payments.length === 0 && inv.adjustments.length === 0 && (
+            {isOwner && ongoing && inv.dispatches.length === 0 && inv.payments.length === 0 && inv.adjustments.length === 0 && (
               <DeleteButton
                 id={inv.id}
                 action={cancelInvoice}
@@ -112,7 +120,30 @@ async function InvoiceContent({ params }: { params: Promise<{ id: string }> }) {
         </Alert>
       )}
 
-      {!cancelled && (
+      {state === "closed" && (
+        <Alert className="mb-4 border-success/40 bg-success/5">
+          <Lock className="text-success" aria-hidden />
+          <AlertDescription className="flex flex-col gap-3 text-foreground sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              <span className="font-medium">Completed</span>
+              {inv.closedAt ? ` on ${formatDateTime(inv.closedAt)}` : ""}
+              {inv.closedByName ? ` by ${inv.closedByName}` : ""}. All {formatNumber(progress.ordered)} bricks delivered
+              {isOwner ? ` and debit = credit (${formatINR(billedTotal)} billed, ${formatINR(receivedTotal)} received)` : ""}. Locked
+              against new deliveries, payments and notes.
+            </span>
+            {isOwner && (
+              <ReopenButton
+                id={inv.id}
+                action={reopenInvoice}
+                title={`Reopen ${inv.invoiceNo}?`}
+                description="The order goes back to Ongoing so you can correct its deliveries, payments or notes. Mark it completed again once debit and credit match."
+              />
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {ongoing && (
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {progress.pending > 0 && <QuickAction href={dispatchHref} icon={Truck} label="Dispatch bricks" primary />}
           {isOwner && (
@@ -289,6 +320,38 @@ async function InvoiceContent({ params }: { params: Promise<{ id: string }> }) {
         </div>
 
         <div className="space-y-4">
+          {/* Completion: delivered + debit = credit */}
+          {isOwner && ongoing && (
+            <section className={`rounded-xl border p-4 md:p-5 ${closeBlocker ? "bg-card" : "border-success/40 bg-success/5"}`}>
+              <h2 className="font-semibold">Complete this order</h2>
+              <ul className="mt-3 space-y-2 text-sm">
+                <CheckRow done={progress.pending === 0}>
+                  {progress.pending === 0 ? "All bricks delivered" : `${formatNumber(progress.pending)} bricks still to deliver`}
+                </CheckRow>
+                <CheckRow done={isSettled(balance)}>
+                  Debit {formatINR(billedTotal)} {isSettled(balance) ? "=" : "≠"} credit {formatINR(receivedTotal)}
+                  {!isSettled(balance) && (
+                    <span className="block text-xs text-muted-foreground">
+                      {balance > 0 ? `${formatINR(balance)} still due` : `${formatINR(-balance)} received in excess`}
+                    </span>
+                  )}
+                </CheckRow>
+              </ul>
+              {closeBlocker ? (
+                <p className="mt-3 text-xs text-muted-foreground">{closeBlocker}</p>
+              ) : (
+                <CloseButton
+                  ids={[inv.id]}
+                  action={closeInvoices}
+                  label="Mark completed"
+                  className="mt-3 w-full"
+                  title={`Complete ${inv.invoiceNo}?`}
+                  description={`All bricks are delivered and debit = credit (${formatINR(billedTotal)} billed, ${formatINR(receivedTotal)} received). The order moves to Completed and is locked until you reopen it.`}
+                />
+              )}
+            </section>
+          )}
+
           {/* Money */}
           {isOwner && (
           <>
@@ -425,6 +488,19 @@ function SumRow({ label, value }: { label: string; value: number }) {
       </TableCell>
       <TableCell className="num pr-4 text-right md:pr-5">{formatINR(value)}</TableCell>
     </TableRow>
+  );
+}
+
+function CheckRow({ done, children }: { done: boolean; children: React.ReactNode }) {
+  const Icon = done ? CheckCircle2 : Circle;
+  return (
+    <li className="flex gap-2">
+      <Icon className={`mt-0.5 size-4 shrink-0 ${done ? "text-success" : "text-muted-foreground"}`} aria-hidden />
+      <span className={done ? "" : "text-muted-foreground"}>
+        <span className="sr-only">{done ? "Done: " : "Not yet: "}</span>
+        {children}
+      </span>
+    </li>
   );
 }
 

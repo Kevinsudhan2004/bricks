@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { today } from "@/lib/today";
 import { getSupplierStats } from "@/server/queries/inbound";
 import { getMasters } from "@/server/queries/masters";
+import { supplierBalancesUnchecked } from "@/server/queries/purchases";
 import { AddSupplierRow } from "./supplier-forms";
 import { SupplierTable } from "./supplier-table";
 
@@ -46,7 +47,7 @@ export default function SuppliersPage() {
 async function Suppliers() {
   const [user, t, masters] = await Promise.all([getCurrentUser(), today(), getMasters()]);
   const isOwner = user.role === "owner";
-  const stats = await getSupplierStats(addDays(t, -29));
+  const [stats, balances] = await Promise.all([getSupplierStats(addDays(t, -29)), isOwner ? supplierBalancesUnchecked() : Promise.resolve([])]);
   const list = masters.suppliers.filter((s) => isOwner || s.active);
 
   return (
@@ -65,6 +66,9 @@ async function Suppliers() {
             gstin: s.gstin,
             address: s.address,
             active: s.active,
+            // Money only for the owner.
+            openingBalance: isOwner ? s.openingBalance : 0,
+            payable: isOwner ? (balances.find((b) => b.supplierId === s.id)?.payable ?? s.openingBalance) : null,
             kg: st?.kg ?? 0,
             loads: st?.loads ?? 0,
             materials: st?.materials || null,

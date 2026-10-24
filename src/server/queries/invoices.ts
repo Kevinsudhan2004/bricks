@@ -21,6 +21,7 @@ import {
   type PaymentStatus,
 } from "@/domain/invoice";
 import { num } from "@/domain/money";
+import { docState, orderCloseBlocker, type DocState } from "@/domain/settlement";
 import { getCurrentUser, requireOwner } from "@/lib/auth";
 import { TAG } from "@/server/tags";
 
@@ -41,6 +42,7 @@ type RawInvoiceSummary = {
   customer_name: string;
   firm_name: string | null;
   status: "active" | "cancelled";
+  closed_at: string | null;
   total: string;
   ordered: number;
   delivered: number;
@@ -63,7 +65,7 @@ async function loadInvoiceSummaries(filter: InvoiceFilter) {
 
   const rows = await db.execute<RawInvoiceSummary>(sql`
     select i.id, i.invoice_no, i.invoice_date::text as invoice_date, i.due_date::text as due_date, i.customer_id, c.name as customer_name, c.firm_name,
-           i.status, i.total,
+           i.status, to_char(i.closed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as closed_at, i.total,
            coalesce(it.ordered, 0)::int as ordered,
            coalesce(dl.delivered, 0)::int as delivered,
            coalesce(pm.paid, 0) as paid,
@@ -138,6 +140,11 @@ export type InvoiceSummary = {
   customerName: string;
   firmName: string | null;
   cancelled: boolean;
+  /** Ongoing until the owner marks it completed ("closed"). */
+  state: DocState;
+  closedAt: string | null;
+  /** Ongoing, fully delivered and debit = credit: the owner can mark it completed. */
+  readyToClose: boolean;
   total: number;
   ordered: number;
   delivered: number;
@@ -173,6 +180,8 @@ function shape(
     const money = { total: num(r.total), paid: num(r.paid), credits: num(r.credits), debits: num(r.debits) };
     const prods = byInvoice.get(r.id) ?? [];
     const pending = prods.reduce((a, p) => a + p.pending, 0);
+    const balance = invoiceBalance(money);
+    const state = docState({ cancelled, closedAt: r.closed_at });
     return {
       id: r.id,
       invoiceNo: r.invoice_no,
@@ -182,11 +191,14 @@ function shape(
       customerName: r.customer_name,
       firmName: r.firm_name,
       cancelled,
+      state,
+      closedAt: r.closed_at,
+      readyToClose: state === "ongoing" && orderCloseBlocker({ cancelled, closed: false, pending, balance }) === null,
       ...money,
       ordered: r.ordered,
       delivered: r.delivered,
       pending: cancelled ? 0 : pending,
-      balance: cancelled ? 0 : invoiceBalance(money),
+      balance: cancelled ? 0 : balance,
       deliveryStatus: deliveryStatus(r.ordered, r.delivered, cancelled),
       paymentStatus: paymentStatus({ ...money, dueDate: r.due_date, today, cancelled }),
       products: prods,
@@ -196,7 +208,7 @@ function shape(
 
 /** Money removed for employees: they see orders and deliveries, never amounts. */
 function withoutMoney(i: InvoiceSummary): InvoiceSummary {
-  return { ...i, total: 0, paid: 0, credits: 0, debits: 0, balance: 0, paymentStatus: "unpaid" };
+  return { ...i, total: 0, paid: 0, credits: 0, debits: 0, balance: 0, paymentStatus: "unpaid", readyToClose: false };
 }
 
 export async function getInvoiceSummaries(filter: InvoiceFilter, today: string) {
@@ -223,6 +235,7 @@ async function loadInvoiceDetail(id: number) {
       invoice: invoices,
       customer: customers,
       createdByName: users.name,
+      closedByName: sql<string | null>`(select name from users where id = ${invoices.closedBy})`,
     })
     .from(invoices)
     .innerJoin(customers, eq(customers.id, invoices.customerId))
@@ -297,6 +310,7 @@ async function loadInvoiceDetail(id: number) {
     ...invoice.invoice,
     customer: invoice.customer,
     createdByName: invoice.createdByName,
+    closedByName: invoice.closedByName,
     items,
     dispatches: [...challans.values()],
     payments: paymentRows,
@@ -334,7 +348,7 @@ export async function getOpenInvoicesForCustomer(customerId: number, today: stri
   await getCurrentUser();
   const all = shape(await loadInvoiceSummaries({ customerId }), today);
   return all
-    .filter((i) => !i.cancelled && i.pending > 0)
+    .filter((i) => i.state === "ongoing" && i.pending > 0)
     .reverse() // oldest first: deliver older orders first
     .map((i) => ({
       id: i.id,
@@ -356,7 +370,7 @@ export async function getAllOpenInvoices(today: string, include?: { invoiceId: n
   const grouped: Record<number, OpenInvoice[]> = {};
   for (const i of [...all].reverse()) {
     const isEdited = include?.invoiceId === i.id;
-    if (i.cancelled || (i.pending <= 0 && !isEdited)) continue;
+    if (i.state !== "ongoing" || (i.pending <= 0 && !isEdited)) continue;
     // When editing a dispatch, its own quantities count as still pending.
     const products = i.products.map((p) => {
       const extra = isEdited ? (include?.extra.get(p.productId) ?? 0) : 0;
@@ -381,7 +395,7 @@ export async function getCustomersWithPending(today: string) {
   const all = shape(await loadInvoiceSummaries({}), today);
   const map = new Map<number, { customerId: number; pending: number; invoices: number }>();
   for (const i of all) {
-    if (i.cancelled || i.pending <= 0) continue;
+    if (i.state !== "ongoing" || i.pending <= 0) continue;
     const m = map.get(i.customerId) ?? { customerId: i.customerId, pending: 0, invoices: 0 };
     m.pending += i.pending;
     m.invoices += 1;

@@ -2,7 +2,7 @@ import "server-only";
 import type { Tx } from "@/db";
 import { auditLogs } from "@/db/schema";
 
-export type AuditAction = "create" | "update" | "delete" | "cancel" | "login" | "logout" | "link" | "unlink";
+export type AuditAction = "create" | "update" | "delete" | "cancel" | "close" | "reopen" | "login" | "logout" | "link" | "unlink";
 
 export async function audit(
   tx: Tx,

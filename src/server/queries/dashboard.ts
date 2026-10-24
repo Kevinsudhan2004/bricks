@@ -9,6 +9,7 @@ import { requireOwner } from "@/lib/auth";
 import { TAG } from "@/server/tags";
 import { customerBalancesUnchecked } from "./customers";
 import { invoiceSummariesUnchecked } from "./invoices";
+import { billSummariesUnchecked, supplierBalancesUnchecked } from "./purchases";
 import { stockUnchecked } from "./stock";
 
 /* Daily series --------------------------------------------------------- */
@@ -71,13 +72,15 @@ export async function getDashboard(from: string, to: string, today: string) {
   const monthStart = startOfMonth(today);
   const months = lastMonths(today, 6);
 
-  const [daily, stockNow, stockBefore, monthly, invoices, balances] = await Promise.all([
+  const [daily, stockNow, stockBefore, monthly, invoices, balances, bills, supplierBalances] = await Promise.all([
     loadDaily(from, to),
     stockUnchecked(today),
     stockUnchecked(addDays(from, -1)),
     loadMonthlyMoney(`${months[0]}-01`),
     invoiceSummariesUnchecked({}, today),
     customerBalancesUnchecked(),
+    billSummariesUnchecked({}, today),
+    supplierBalancesUnchecked(),
   ]);
   // Today's numbers come from a separate (tiny) cached read so the range can be anything.
   const todayData = from <= today && today <= to ? daily : await loadDaily(today, today);
@@ -184,7 +187,13 @@ export async function getDashboard(from: string, to: string, today: string) {
     billedThisMonth: monthlySeries.at(-1)?.billed ?? 0,
     overdueCount: open.filter((i) => i.paymentStatus === "overdue").length,
     overdueAmount: sumBy(open.filter((i) => i.paymentStatus === "overdue"), (i) => i.balance),
+    ordersReadyToComplete: open.filter((i) => i.readyToClose).length,
+    payable: round2(supplierBalances.reduce((a, s) => a + Math.max(s.payable, 0), 0)),
+    ongoingBills: bills.filter((b) => b.state === "ongoing").length,
   };
+  const overdueBills = bills
+    .filter((b) => b.state === "ongoing" && b.paymentStatus === "overdue")
+    .sort((a, b) => b.balance - a.balance);
 
   return {
     kpis,
@@ -203,6 +212,9 @@ export async function getDashboard(from: string, to: string, today: string) {
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 5)
       .map((i) => ({ id: i.id, invoiceNo: i.invoiceNo, customer: i.firmName ?? i.customerName, balance: i.balance, dueDate: i.dueDate })),
+    overdueBills: overdueBills.slice(0, 5).map((b) => ({ id: b.id, billNo: b.billNo, supplier: b.supplierName, balance: b.balance, dueDate: b.dueDate })),
+    overdueBillsAmount: round2(sumBy(overdueBills, (b) => b.balance)),
+    overdueBillsCount: overdueBills.length,
   };
 }
 

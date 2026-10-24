@@ -23,6 +23,16 @@ async function resolveSupplier(tx: Tx, data: InboundData): Promise<{ id: number 
   return { id: created.id, created: true };
 }
 
+/** A load on a supplier bill is part of what we owe; changing it would silently change the bill. */
+function assertNotBilled(user: { role: string }, row: { purchaseBillId: number | null }) {
+  if (!row.purchaseBillId) return;
+  throw new UserError(
+    user.role === "owner"
+      ? "This load is on a supplier bill. Remove it from the bill first (edit the bill), then change it."
+      : "This load has already been billed, so it can't be changed. Please ask the owner.",
+  );
+}
+
 async function materialOrThrow(id: number) {
   const [material] = await db.select().from(materials).where(eq(materials.id, id));
   if (!material) throw new UserError("Pick a material.", { materialId: "Pick a material" });
@@ -70,6 +80,7 @@ export async function updateInbound(id: number, input: unknown): Promise<ActionR
       .where(and(eq(inboundEntries.id, id), isNull(inboundEntries.deletedAt)));
     if (!existing) throw new UserError("This entry no longer exists.");
     assertCanModifyEntry(user, existing);
+    assertNotBilled(user, existing);
     assertEntryDate(user, data.entryDate);
     await materialOrThrow(data.materialId);
     const netKg = round2(data.netKg);
@@ -118,6 +129,7 @@ export async function deleteInbound(input: unknown): Promise<ActionResult> {
       .where(and(eq(inboundEntries.id, id), isNull(inboundEntries.deletedAt)));
     if (!existing) throw new UserError("This entry was already deleted.");
     assertCanModifyEntry(user, existing);
+    assertNotBilled(user, existing);
     await db.transaction(async (tx) => {
       await tx
         .update(inboundEntries)

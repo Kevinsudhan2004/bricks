@@ -17,7 +17,7 @@ import { supplierSchema, type SupplierInput } from "@/lib/validators";
 import { saveSupplier } from "@/server/actions/suppliers";
 
 type Output = z.output<typeof supplierSchema>;
-const EMPTY: SupplierInput = { name: "", phone: "", gstin: "", address: "", active: true };
+const EMPTY: SupplierInput = { name: "", phone: "", gstin: "", address: "", openingBalance: "", active: true };
 
 function SupplierFields({
   id,
@@ -80,6 +80,16 @@ function SupplierFields({
           <FormField label="GSTIN (optional)" error={e.gstin?.message} htmlFor={`s-gst-${key}`}>
             <Input id={`s-gst-${key}`} className="uppercase" maxLength={15} {...register("gstin")} />
           </FormField>
+          {isOwner && (
+            <FormField
+              label="Opening balance (₹)"
+              error={e.openingBalance?.message}
+              hint="What you already owed them before using this app. Use a minus sign for an advance you paid."
+              htmlFor={`s-open-${key}`}
+            >
+              <Input id={`s-open-${key}`} inputMode="decimal" placeholder="0" className="num" {...register("openingBalance")} />
+            </FormField>
+          )}
           {isOwner && (
             <div className="flex items-center gap-3">
               <Controller

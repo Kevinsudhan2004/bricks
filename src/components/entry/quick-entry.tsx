@@ -10,14 +10,22 @@ import type { CustomerOption } from "@/components/forms/customer-picker";
 import type { SheetMode } from "@/components/forms/form-parts";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { InvoiceBalanceOption } from "@/server/queries/money";
+import type { BillBalanceOption, BillLoad } from "@/server/queries/purchases";
 
 const CustomerForm = dynamic(() => import("@/app/(app)/customers/customer-form").then((m) => m.CustomerForm), { loading: FormLoading });
 const InvoiceForm = dynamic(() => import("@/app/(app)/orders/order-form").then((m) => m.InvoiceForm), { loading: FormLoading });
 const PaymentForm = dynamic(() => import("@/app/(app)/payments/payment-form").then((m) => m.PaymentForm), { loading: FormLoading });
 const NoteForm = dynamic(() => import("@/app/(app)/notes/note-form").then((m) => m.NoteForm), { loading: FormLoading });
+const BillForm = dynamic(() => import("@/app/(app)/purchases/bill-form").then((m) => m.BillForm), { loading: FormLoading });
+const SupplierPaymentForm = dynamic(() => import("@/app/(app)/purchases/supplier-money-forms").then((m) => m.SupplierPaymentForm), {
+  loading: FormLoading,
+});
+const SupplierNoteForm = dynamic(() => import("@/app/(app)/purchases/supplier-money-forms").then((m) => m.SupplierNoteForm), {
+  loading: FormLoading,
+});
 
-export type EntryKind = "customer" | "order" | "payment" | "credit" | "debit";
-export type EntryRequest = { kind: EntryKind; customerId?: number; invoiceId?: number };
+export type EntryKind = "customer" | "order" | "payment" | "credit" | "debit" | "bill" | "supplierPayment" | "supplierCredit" | "supplierDebit";
+export type EntryRequest = { kind: EntryKind; customerId?: number; invoiceId?: number; supplierId?: number; billId?: number };
 
 const COPY: Record<EntryKind, { title: string; description: string }> = {
   customer: { title: "New customer", description: "Contact, billing and site details." },
@@ -25,6 +33,10 @@ const COPY: Record<EntryKind, { title: string; description: string }> = {
   payment: { title: "Record payment", description: "Money received from a customer." },
   credit: { title: "Credit / debit note", description: "Adjust a customer's balance: damage, returns, rate changes or extra charges." },
   debit: { title: "Credit / debit note", description: "Adjust a customer's balance: damage, returns, rate changes or extra charges." },
+  bill: { title: "New raw material bill", description: "A supplier's bill for the loads they sent. It stays ongoing until it's fully paid." },
+  supplierPayment: { title: "Pay supplier", description: "Money paid to a supplier, against a bill or as an advance." },
+  supplierCredit: { title: "Supplier credit / extra charge", description: "Short weight, quality, discounts or extra charges on a supplier's account." },
+  supplierDebit: { title: "Supplier credit / extra charge", description: "Short weight, quality, discounts or extra charges on a supplier's account." },
 };
 
 const OpenEntry = createContext<((req: EntryRequest) => void) | null>(null);
@@ -88,12 +100,14 @@ export function NewEntryButton({
   kind,
   customerId,
   invoiceId,
+  supplierId,
+  billId,
   children,
   ...props
 }: EntryRequest & Omit<React.ComponentProps<typeof Button>, "onClick" | "type">) {
   const openEntry = useQuickEntry();
   return (
-    <Button type="button" {...props} onClick={() => openEntry({ kind, customerId, invoiceId })}>
+    <Button type="button" {...props} onClick={() => openEntry({ kind, customerId, invoiceId, supplierId, billId })}>
       {children}
     </Button>
   );
@@ -109,10 +123,31 @@ type OrderData = {
 };
 type MoneyData = { customers: CustomerOption[]; balances: Record<number, InvoiceBalanceOption[]>; today: string };
 type CustomerData = { defaultState: string | null; showMoney: boolean };
+type BillData = {
+  suppliers: { id: number; name: string; gstin: string | null }[];
+  materials: { id: number; name: string; code: string }[];
+  unbilled: Record<number, BillLoad[]>;
+  lastRates: { supplierId: number; materialId: number; ratePerTon: number; gstRate: number }[];
+  companyStateCode: string | null;
+  today: string;
+};
+type SupplierMoneyData = { suppliers: { id: number; name: string }[]; balances: Record<number, BillBalanceOption[]>; today: string };
+
+const ENDPOINT: Record<EntryKind, string> = {
+  customer: "customer",
+  order: "order",
+  payment: "payment",
+  credit: "note",
+  debit: "note",
+  bill: "bill",
+  supplierPayment: "supplier-money",
+  supplierCredit: "supplier-money",
+  supplierDebit: "supplier-money",
+};
 
 function EntryBody({ request, sheet }: { request: EntryRequest; sheet: SheetMode }) {
-  const { kind, customerId, invoiceId } = request;
-  const endpoint = kind === "credit" || kind === "debit" ? "note" : kind;
+  const { kind, customerId, invoiceId, supplierId, billId } = request;
+  const endpoint = ENDPOINT[kind];
   const [data, setData] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,6 +190,52 @@ function EntryBody({ request, sheet }: { request: EntryRequest; sheet: SheetMode
         today={d.today}
         showMoney={d.showMoney}
         initial={preset ? { customerId: preset.id, deliveryAddress: preset.siteAddress ?? "", taxType: inter ? "inter" : "intra" } : undefined}
+        sheet={sheet}
+      />
+    );
+  }
+
+  if (kind === "bill") {
+    const d = data as BillData;
+    return (
+      <BillForm
+        suppliers={d.suppliers}
+        materials={d.materials}
+        unbilled={d.unbilled}
+        lastRates={d.lastRates}
+        companyStateCode={d.companyStateCode}
+        today={d.today}
+        initial={supplierId ? { supplierId } : undefined}
+        sheet={sheet}
+      />
+    );
+  }
+
+  if (kind === "supplierPayment" || kind === "supplierCredit" || kind === "supplierDebit") {
+    const d = data as SupplierMoneyData;
+    if (kind === "supplierPayment") {
+      const bill = billId ?? (supplierId ? d.balances[supplierId]?.find((b) => b.balance > 0)?.id : undefined);
+      return (
+        <SupplierPaymentForm
+          suppliers={d.suppliers}
+          balances={d.balances}
+          today={d.today}
+          initial={supplierId ? { supplierId, billId: bill } : undefined}
+          sheet={sheet}
+        />
+      );
+    }
+    return (
+      <SupplierNoteForm
+        suppliers={d.suppliers}
+        balances={d.balances}
+        today={d.today}
+        initial={{
+          type: kind === "supplierDebit" ? "debit" : "credit",
+          supplierId,
+          billId,
+          reason: kind === "supplierDebit" ? "transport" : "short_weight",
+        }}
         sheet={sheet}
       />
     );

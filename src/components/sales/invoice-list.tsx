@@ -5,12 +5,16 @@ import { ClipboardList, ExternalLink, FileMinus, FileText, IndianRupee, Printer,
 import { Button } from "@/components/ui/button";
 import { DataSheet, SheetDetails, type SheetColumn } from "@/components/common/data-sheet";
 import { EmptyState } from "@/components/common/empty-state";
-import { DeliveryBadge, PaymentBadge } from "@/components/common/status-badge";
+import { DeliveryBadge, PaymentBadge, StateBadge } from "@/components/common/status-badge";
 import { NewEntryButton } from "@/components/entry/quick-entry";
+import { CloseButton } from "@/components/forms/close-buttons";
 import { productColor } from "@/lib/colors";
-import { formatDate, formatINR, formatNumber, pct } from "@/lib/format";
+import { formatDate, formatDateTime, formatINR, formatNumber, pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { closeInvoices } from "@/server/actions/invoices";
 import type { InvoiceSummary } from "@/server/queries/invoices";
+
+const STATE_ORDER = { ongoing: 0, closed: 1, cancelled: 2 } as const;
 
 const rupees = (v: number) => formatINR(v, { decimals: false });
 const live = (rows: InvoiceSummary[]) => rows.filter((i) => !i.cancelled);
@@ -61,6 +65,7 @@ export function InvoiceList({
   showMoney = true,
   emptyText = "No orders here.",
   customerId,
+  bulkClose = false,
 }: {
   invoices: InvoiceSummary[];
   showCustomer?: boolean;
@@ -69,7 +74,10 @@ export function InvoiceList({
   emptyText?: string;
   /** Pre-picks this customer in the "New order" sheet. */
   customerId?: number;
+  /** Offer "Complete all ready" for the orders in this list that are delivered and settled. */
+  bulkClose?: boolean;
 }) {
+  const ready = showMoney ? invoices.filter((i) => i.readyToClose) : [];
   const columns: SheetColumn<InvoiceSummary>[] = [
     {
       id: "no",
@@ -83,6 +91,12 @@ export function InvoiceList({
       ),
     },
     { id: "date", header: "Date", sortValue: (i) => i.invoiceDate, cell: (i) => formatDate(i.invoiceDate) },
+    {
+      id: "state",
+      header: "State",
+      sortValue: (i) => STATE_ORDER[i.state] * 2 + (i.readyToClose ? 0 : 1),
+      cell: (i) => <StateBadge state={i.state} ready={i.readyToClose} />,
+    },
     ...(showCustomer
       ? ([
           {
@@ -159,12 +173,17 @@ export function InvoiceList({
     {
       id: "status",
       header: "Status",
-      cell: (i) => (
-        <span className="flex gap-1">
-          <DeliveryBadge status={i.deliveryStatus} />
-          {showMoney && !i.cancelled && <PaymentBadge status={i.paymentStatus} />}
-        </span>
-      ),
+      cell: (i) =>
+        i.state === "ongoing" ? (
+          <span className="flex gap-1">
+            <DeliveryBadge status={i.deliveryStatus} />
+            {showMoney && <PaymentBadge status={i.paymentStatus} />}
+          </span>
+        ) : i.state === "closed" ? (
+          <span className="text-xs text-muted-foreground">Delivered & settled</span>
+        ) : (
+          <DeliveryBadge status="cancelled" />
+        ),
     },
   ];
 
@@ -178,9 +197,27 @@ export function InvoiceList({
       searchPlaceholder={showCustomer ? "Search order no, customer or product" : "Search order no or product"}
       rowClassName={(i) => (i.cancelled ? "opacity-60" : undefined)}
       toolbar={
-        <NewEntryButton kind="order" customerId={customerId}>
-          <ClipboardList aria-hidden /> New order
-        </NewEntryButton>
+        <>
+          {bulkClose && ready.length > 0 && (
+            <CloseButton
+              ids={ready.map((i) => i.id)}
+              action={closeInvoices}
+              variant="outline"
+              label={ready.length === 1 ? "Complete 1 ready order" : `Complete ${ready.length} ready orders`}
+              title={`Mark ${ready.length === 1 ? "this order" : `${ready.length} orders`} completed?`}
+              description={
+                <>
+                  These orders are fully delivered and their debit and credit match (billed = received). Completed orders move
+                  to the Completed list and are locked: no more deliveries, payments or notes until you reopen one.
+                  <span className="mt-2 block font-mono text-xs">{ready.map((i) => i.invoiceNo).join(", ")}</span>
+                </>
+              }
+            />
+          )}
+          <NewEntryButton kind="order" customerId={customerId}>
+            <ClipboardList aria-hidden /> New order
+          </NewEntryButton>
+        </>
       }
       empty={<EmptyState icon={FileText} title={emptyText} />}
       expand={(i) => <InvoiceDetails i={i} showMoney={showMoney} />}
@@ -194,6 +231,16 @@ function InvoiceDetails({ i, showMoney }: { i: InvoiceSummary; showMoney: boolea
       items={[
         ["Customer", i.firmName ? `${i.firmName} (${i.customerName})` : i.customerName],
         ["Order date", formatDate(i.invoiceDate)],
+        [
+          "State",
+          i.state === "closed" && i.closedAt
+            ? `Completed on ${formatDateTime(i.closedAt)}`
+            : i.readyToClose
+              ? "Delivered and settled — ready to complete"
+              : i.state === "ongoing"
+                ? "Ongoing"
+                : "Cancelled",
+        ],
         ...(showMoney
           ? ([
               ["Payment due by", i.dueDate ? formatDate(i.dueDate) : null],
@@ -207,23 +254,35 @@ function InvoiceDetails({ i, showMoney }: { i: InvoiceSummary; showMoney: boolea
       ]}
       actions={
         <>
-          {!i.cancelled && i.pending > 0 && (
+          {i.state === "ongoing" && i.pending > 0 && (
             <Button asChild size="sm">
               <Link href={`/dispatch?order=${i.id}`}>
                 <Truck aria-hidden /> Dispatch bricks
               </Link>
             </Button>
           )}
+          {showMoney && i.readyToClose && (
+            <CloseButton
+              ids={[i.id]}
+              action={closeInvoices}
+              size="sm"
+              label="Mark completed"
+              title={`Complete ${i.invoiceNo}?`}
+              description={`All bricks are delivered and debit = credit (${rupees(i.total + i.debits)} billed, ${rupees(i.paid + i.credits)} received). The order moves to Completed and is locked until you reopen it.`}
+            />
+          )}
           {showMoney && !i.cancelled && (
             <>
-              {i.balance > 0 && (
+              {i.state === "ongoing" && i.balance > 0 && (
                 <NewEntryButton kind="payment" customerId={i.customerId} invoiceId={i.id} size="sm" variant={i.pending > 0 ? "outline" : "default"}>
                   <IndianRupee aria-hidden /> Record payment
                 </NewEntryButton>
               )}
-              <NewEntryButton kind="credit" customerId={i.customerId} invoiceId={i.id} size="sm" variant="outline">
-                <FileMinus aria-hidden /> Credit / debit note
-              </NewEntryButton>
+              {i.state === "ongoing" && (
+                <NewEntryButton kind="credit" customerId={i.customerId} invoiceId={i.id} size="sm" variant="outline">
+                  <FileMinus aria-hidden /> Credit / debit note
+                </NewEntryButton>
+              )}
               <Button asChild size="sm" variant="ghost">
                 <a href={`/print/invoice/${i.id}`} target="_blank" rel="noopener">
                   <Printer aria-hidden /> Invoice

@@ -6,7 +6,9 @@ import {
   Boxes,
   CalendarClock,
   Factory,
+  FileStack,
   FileText,
+  HandCoins,
   IndianRupee,
   MapPin,
   PackageOpen,
@@ -133,7 +135,7 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<Search
       </Suspense>
 
       {/* Business */}
-      <section aria-label="Business health" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section aria-label="Business health" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard
           label="Bricks to deliver"
           value={formatNumber(k.pendingDeliveries)}
@@ -145,10 +147,28 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<Search
         <StatCard
           label="To collect"
           value={formatINRCompact(k.receivable)}
-          hint={k.overdueCount ? `${formatINRCompact(k.overdueAmount)} overdue on ${k.overdueCount} orders` : "Nothing overdue"}
+          hint={
+            k.overdueCount
+              ? `${formatINRCompact(k.overdueAmount)} overdue on ${k.overdueCount} orders`
+              : k.ordersReadyToComplete
+                ? `${k.ordersReadyToComplete} orders ready to complete`
+                : "Nothing overdue"
+          }
           icon={Wallet}
           tone={k.overdueCount ? "danger" : "warning"}
           href="/orders?status=unpaid"
+        />
+        <StatCard
+          label="To pay suppliers"
+          value={formatINRCompact(k.payable)}
+          hint={
+            d.overdueBillsCount
+              ? `${formatINRCompact(d.overdueBillsAmount)} overdue on ${d.overdueBillsCount} bills`
+              : `${k.ongoingBills} ongoing raw material bill${k.ongoingBills === 1 ? "" : "s"}`
+          }
+          icon={HandCoins}
+          tone={d.overdueBillsCount ? "danger" : "default"}
+          href="/purchases"
         />
         <StatCard
           label="Collected this month"
@@ -164,11 +184,12 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<Search
           hint={k.todayProduction.map((p) => `${formatNumber(p.inYard)} ${p.name.split(" ")[0].toLowerCase()}`).join(" · ")}
           icon={Boxes}
           href="/stock"
+          className="col-span-2 lg:col-span-1"
         />
       </section>
 
       {/* Alerts */}
-      {(d.lowStock.length > 0 || d.overdue.length > 0) && (
+      {(d.lowStock.length > 0 || d.overdue.length > 0 || d.overdueBills.length > 0) && (
         <section aria-label="Needs attention" className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {d.lowStock.length > 0 && (
             <div className="min-w-0 rounded-xl border border-warning/40 bg-warning/10 p-4">
@@ -200,6 +221,25 @@ async function DashboardContent({ searchParams }: { searchParams: Promise<Search
                         {o.customer} <span className="font-mono text-xs text-muted-foreground">{o.invoiceNo}</span>
                       </span>
                       <span className="num shrink-0 font-medium">{formatINR(o.balance, { decimals: false })}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {d.overdueBills.length > 0 && (
+            <div className="min-w-0 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+              <p className="flex items-center gap-2 font-medium">
+                <FileStack className="size-4 text-destructive" aria-hidden /> Supplier bills past their pay-by date
+              </p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {d.overdueBills.map((b) => (
+                  <li key={b.id}>
+                    <Link href={`/purchases/${b.id}`} className="flex justify-between gap-2 hover:text-primary">
+                      <span className="truncate">
+                        {b.supplier} <span className="font-mono text-xs text-muted-foreground">{b.billNo}</span>
+                      </span>
+                      <span className="num shrink-0 font-medium">{formatINR(b.balance, { decimals: false })}</span>
                     </Link>
                   </li>
                 ))}

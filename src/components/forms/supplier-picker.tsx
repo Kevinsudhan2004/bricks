@@ -15,11 +15,16 @@ export function SupplierPicker({
   value,
   onChange,
   id,
+  allowNew = true,
+  invalid,
 }: {
   suppliers: { id: number; name: string }[];
   value: SupplierChoice;
   onChange: (v: SupplierChoice) => void;
   id?: string;
+  /** Offer "Add …" for a typed name and "No supplier". Off for bills and payments, which need a real supplier. */
+  allowNew?: boolean;
+  invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -46,6 +51,7 @@ export function SupplierPicker({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-invalid={invalid || undefined}
           className="h-11 w-full justify-between px-3 font-normal md:h-10"
         >
           {label ? (
@@ -61,10 +67,10 @@ export function SupplierPicker({
       </PopoverTrigger>
       <PopoverContent className="w-(--radix-popover-trigger-width) min-w-64 p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search or type a new name…" value={search} onValueChange={setSearch} />
+          <CommandInput placeholder={allowNew ? "Search or type a new name…" : "Search suppliers…"} value={search} onValueChange={setSearch} />
           <CommandList className="max-h-64">
             <CommandEmpty>{typed ? "Not in the list." : "No suppliers yet."}</CommandEmpty>
-            {typed && !exact && (
+            {allowNew && typed && !exact && (
               <CommandGroup>
                 <CommandItem
                   value={`__add ${typed}`}
@@ -96,7 +102,7 @@ export function SupplierPicker({
                 </CommandItem>
               ))}
             </CommandGroup>
-            {label && (
+            {allowNew && label && (
               <CommandGroup>
                 <CommandItem
                   value="__none"

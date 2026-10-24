@@ -24,7 +24,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { ListSkeleton, StatGridSkeleton } from "@/components/common/skeletons";
 import { StatCard } from "@/components/common/stat-card";
-import { Pill } from "@/components/common/status-badge";
+import { Pill, StateBadge } from "@/components/common/status-badge";
 import { DeliveriesByMonthChart, InvoicePaymentChart } from "@/components/charts/lazy";
 import { NewEntryButton } from "@/components/entry/quick-entry";
 import { InvoiceList } from "@/components/sales/invoice-list";
@@ -81,7 +81,7 @@ async function CustomerDashboard({ params }: { params: Promise<{ id: string }> }
   const received = round2(payments.reduce((a, p) => a + p.amount, 0));
   const balance = ledger.at(-1)?.balance ?? c.openingBalance;
   const totals = ledgerTotals(ledger);
-  const openInvoices = active.filter((i) => i.pending > 0 || i.balance > 0);
+  const openInvoices = active.filter((i) => i.state === "ongoing");
   const doneInvoices = invoices.filter((i) => !openInvoices.includes(i));
   const displayName = c.firmName ?? c.name;
 
@@ -197,9 +197,9 @@ async function CustomerDashboard({ params }: { params: Promise<{ id: string }> }
 
       {/* Open invoices — the heart of the customer dashboard */}
       <section className="mt-6 space-y-3">
-        <h2 className="text-lg font-semibold">Open orders</h2>
+        <h2 className="text-lg font-semibold">Ongoing orders</h2>
         {openInvoices.length === 0 ? (
-          <EmptyState icon={PackageCheck} title="Nothing open" description="All orders are delivered and paid." />
+          <EmptyState icon={PackageCheck} title="Nothing ongoing" description="Every order is completed: delivered, and debit = credit." />
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {openInvoices.map((inv) => (
@@ -210,7 +210,10 @@ async function CustomerDashboard({ params }: { params: Promise<{ id: string }> }
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-mono text-sm font-medium group-hover:text-primary">{inv.invoiceNo}</p>
+                    <p className="flex items-center gap-2 font-mono text-sm font-medium group-hover:text-primary">
+                      {inv.invoiceNo}
+                      {inv.readyToClose && <StateBadge state="ongoing" ready className="font-sans" />}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {formatDate(inv.invoiceDate)}
                       {inv.dueDate ? ` · due ${formatDate(inv.dueDate)}` : ""}
@@ -354,7 +357,7 @@ async function CustomerDashboard({ params }: { params: Promise<{ id: string }> }
         </TabsContent>
 
         <TabsContent value="invoices" className="mt-3">
-          <InvoiceList invoices={[...openInvoices, ...doneInvoices]} showCustomer={false} emptyText="No invoices yet" customerId={c.id} />
+          <InvoiceList invoices={[...openInvoices, ...doneInvoices]} showCustomer={false} emptyText="No invoices yet" customerId={c.id} bulkClose />
         </TabsContent>
 
         <TabsContent value="dispatches" className="mt-3">

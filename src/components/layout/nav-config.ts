@@ -3,11 +3,14 @@ import {
   Boxes,
   ClipboardList,
   Factory,
+  FileStack,
+  HandCoins,
   Home,
   IndianRupee,
   LayoutDashboard,
   MapPin,
   ReceiptText,
+  Scale,
   Settings,
   Store,
   Truck,
@@ -35,10 +38,11 @@ const OWNER_NAV: NavGroup[] = [
     label: "Overview",
     items: [
       { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { title: "Accounts", href: "/accounts", icon: Scale, description: "Who owes you, whom you owe" },
       { title: "Truck location", href: "/trucks", icon: MapPin },
     ],
   },
-  { label: "Daily entry", items: [ENTRY_ITEMS.inbound, ENTRY_ITEMS.production, ENTRY_ITEMS.dispatch, ENTRY_ITEMS.suppliers] },
+  { label: "Daily entry", items: [ENTRY_ITEMS.inbound, ENTRY_ITEMS.production, ENTRY_ITEMS.dispatch] },
   {
     label: "Sales & accounts",
     items: [
@@ -46,6 +50,14 @@ const OWNER_NAV: NavGroup[] = [
       ENTRY_ITEMS.customers,
       { title: "Payments", href: "/payments", icon: IndianRupee },
       { title: "Credit / Debit notes", href: "/notes", icon: ReceiptText },
+    ],
+  },
+  {
+    label: "Purchases",
+    items: [
+      { title: "Raw material bills", href: "/purchases", icon: FileStack, description: "Supplier bills: ongoing and closed" },
+      { title: "Payments to suppliers", href: "/purchases/payments", icon: HandCoins },
+      { ...ENTRY_ITEMS.suppliers, description: "Who sends raw material, and what you owe them" },
     ],
   },
   {
@@ -95,9 +107,16 @@ export const QUICK_ADD: NavItem[] = [
   { title: "Payment", href: "/payments/new", icon: IndianRupee, description: "Money received", entry: "payment" },
   { title: "Customer", href: "/customers/new", icon: Users, description: "Add a new customer", entry: "customer" },
   { title: "Credit / Debit note", href: "/notes/new", icon: ReceiptText, description: "Adjust a balance", entry: "credit" },
+  { title: "Supplier bill", href: "/purchases?new=bill", icon: FileStack, description: "Raw material bill", entry: "bill" },
+  { title: "Pay supplier", href: "/purchases/payments?new=payment", icon: HandCoins, description: "Money paid out", entry: "supplierPayment" },
   { title: "Stock adjustment", href: "/stock/adjust", icon: ClipboardList, description: "Correct stock count" },
 ];
 
 export function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** The most specific nav link for a path, so /purchases/payments lights up "Payments", not also "Bills". */
+export function activeHref(pathname: string, hrefs: string[]): string | undefined {
+  return hrefs.filter((h) => isActivePath(pathname, h)).sort((a, b) => b.length - a.length)[0];
 }

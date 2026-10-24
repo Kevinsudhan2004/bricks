@@ -27,7 +27,7 @@ import { QuickEntryProvider } from "@/components/entry/quick-entry";
 import { BottomNav } from "./bottom-nav";
 import { CommandSearch } from "./command-search";
 import { OfflineBanner } from "./offline-banner";
-import { isActivePath, navFor } from "./nav-config";
+import { activeHref, navFor } from "./nav-config";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 import { useUser } from "./user-provider";
@@ -129,6 +129,7 @@ function SidebarNav() {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const groups = navFor(user.role);
+  const current = activeHref(pathname, groups.flatMap((g) => g.items.map((i) => i.href)));
 
   return (
     <>
@@ -141,7 +142,7 @@ function SidebarNav() {
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     asChild
-                    isActive={isActivePath(pathname, item.href)}
+                    isActive={item.href === current}
                     tooltip={item.title}
                     className="h-10 md:h-9"
                   >

@@ -85,6 +85,11 @@ export async function getMasters() {
   return loadMasters();
 }
 
+/** Internal (already-authorized callers, e.g. route handlers that checked the role themselves). */
+export async function loadMastersUnchecked() {
+  return loadMasters();
+}
+
 /** Active products/materials/suppliers for entry forms. */
 export async function getActiveMasters() {
   const m = await getMasters();

@@ -37,7 +37,9 @@ async function EditOrder({ params }: { params: Promise<{ id: string }> }) {
   const blocked =
     inv.status === "cancelled"
       ? "This order is cancelled and can't be edited."
-      : !canModifyEntry(user, inv, t)
+      : inv.closedAt
+        ? "This order is completed and locked. Reopen it from the order page to edit it."
+        : !canModifyEntry(user, inv, t)
         ? "You can only change orders you entered today. Please ask the owner to correct this one."
         : null;
   if (blocked) {

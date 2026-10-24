@@ -13,6 +13,7 @@ export const TAG = {
   invoices: "invoices",
   payments: "payments",
   notes: "notes",
+  purchases: "purchases", // supplier bills, payments made to suppliers, supplier notes
   stockAdj: "stock-adj",
   audit: "audit",
   trucks: "trucks", // truck list (names, plates, drivers)

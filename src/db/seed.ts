@@ -6,8 +6,8 @@
  * Safe to re-run: base data is upserted, demo data is skipped if invoices already exist.
  */
 import bcrypt from "bcryptjs";
-import { eq, sql } from "drizzle-orm";
-import { addDays, DEFAULT_TZ, financialYear, todayIn } from "../domain/dates";
+import { eq, inArray, sql } from "drizzle-orm";
+import { addDays, daysBetween, DEFAULT_TZ, financialYear, todayIn } from "../domain/dates";
 import { DOC_PREFIX, formatDocNo } from "../domain/doc-numbers";
 import { computeInvoiceTotals } from "../domain/invoice";
 import { round2 } from "../domain/money";
@@ -234,6 +234,7 @@ async function seedDemo(dbx: Db) {
     dispatched: boolean;
   };
   const openInvoices: OpenInvoice[] = [];
+  const allLoads: { id: number; entryDate: string; supplierId: number | null; materialId: number; netKg: number }[] = [];
 
   for (let d = start; d <= today; d = addDays(d, 1)) {
     const weekday = new Date(`${d}T00:00:00Z`).getUTCDay();
@@ -270,11 +271,6 @@ async function seedDemo(dbx: Db) {
         CEMENT: [10000, 20000],
         MSAND: [22000, 36000],
       };
-      const ratePerTon: Record<string, [number, number]> = {
-        FLYASH: [550, 800],
-        CEMENT: [6800, 7400],
-        MSAND: [850, 1150],
-      };
       const inboundRows: (typeof s.inboundEntries.$inferInsert)[] = [];
       for (const mat of mats) {
         const consumed = rows.reduce(
@@ -288,7 +284,7 @@ async function seedDemo(dbx: Db) {
           const [lo, hi] = loadSize[mat.code];
           const net = roundTo(between(lo, hi), 10);
           const tare = roundTo(between(8500, 12500), 10);
-          const rate = roundTo(between(...ratePerTon[mat.code]), 10);
+          // Rate and amount come from the supplier bill the load ends up on (below).
           inboundRows.push({
             entryDate: d,
             materialId: mat.id,
@@ -298,15 +294,23 @@ async function seedDemo(dbx: Db) {
             grossKg: net + tare,
             tareKg: tare,
             netKg: net,
-            ratePerTon: rate,
-            amount: round2((net / 1000) * rate),
             createdBy: employee.id,
             createdAt: at(d, int(7, 16)),
           });
           need -= net;
         }
       }
-      if (inboundRows.length) await dbx.insert(s.inboundEntries).values(inboundRows);
+      if (inboundRows.length) {
+        allLoads.push(
+          ...(await dbx.insert(s.inboundEntries).values(inboundRows).returning({
+            id: s.inboundEntries.id,
+            entryDate: s.inboundEntries.entryDate,
+            supplierId: s.inboundEntries.supplierId,
+            materialId: s.inboundEntries.materialId,
+            netKg: s.inboundEntries.netKg,
+          })),
+        );
+      }
     }
 
     /* New invoices */
@@ -453,16 +457,19 @@ async function seedDemo(dbx: Db) {
 
   // A few credit / debit notes
   const withDispatch = openInvoices.filter((o) => o.dispatched);
+  const noteNet = new Map<number, number>(); // order id → debit notes − credit notes
   for (let k = 0; k < 3; k++) {
     const inv = pick(withDispatch);
     const date = addDays(inv.date, int(2, 6)) > today ? today : addDays(inv.date, int(2, 6));
+    const amount = roundTo(between(1200, 6000), 100);
+    noteNet.set(inv.id, (noteNet.get(inv.id) ?? 0) - amount);
     await dbx.insert(s.adjustmentNotes).values({
       noteNo: nextNo(DOC_PREFIX.creditNote, date),
       type: "credit",
       noteDate: date,
       customerId: customers[inv.customerIdx].id,
       invoiceId: inv.id,
-      amount: roundTo(between(1200, 6000), 100),
+      amount,
       reason: "damaged",
       description: `${int(150, 600)} bricks damaged in transit`,
       createdBy: owner.id,
@@ -471,15 +478,147 @@ async function seedDemo(dbx: Db) {
   for (let k = 0; k < 2; k++) {
     const inv = pick(withDispatch);
     const date = addDays(inv.date, int(1, 4)) > today ? today : addDays(inv.date, int(1, 4));
+    const amount = roundTo(between(1000, 3000), 100);
+    noteNet.set(inv.id, (noteNet.get(inv.id) ?? 0) + amount);
     await dbx.insert(s.adjustmentNotes).values({
       noteNo: nextNo(DOC_PREFIX.debitNote, date),
       type: "debit",
       noteDate: date,
       customerId: customers[inv.customerIdx].id,
       invoiceId: inv.id,
-      amount: roundTo(between(1000, 3000), 100),
+      amount,
       reason: "transport",
       description: "Extra trip to second site",
+      createdBy: owner.id,
+    });
+  }
+
+  // Older orders that were fully delivered and settled have been marked completed by the owner;
+  // recent settled ones are left for the "Ready to complete" list.
+  let completed = 0;
+  for (const inv of openInvoices) {
+    const delivered = [...inv.pending.values()].every((q) => q === 0);
+    const balance = round2(inv.total + (noteNet.get(inv.id) ?? 0) - inv.paid);
+    if (!delivered || balance !== 0 || inv.date > addDays(today, -25)) continue;
+    await dbx.update(s.invoices).set({ closedAt: at(addDays(inv.date, 20), 19), closedBy: owner.id }).where(eq(s.invoices.id, inv.id));
+    completed++;
+  }
+
+  /* Raw material bills: each supplier bills every 15 days; the last 10 days of loads aren't billed yet. */
+  const RATE: Record<string, number> = { FLYASH: 650, CEMENT: 7100, MSAND: 980 };
+  const GST: Record<string, number> = { FLYASH: 5, CEMENT: 18, MSAND: 5 };
+  const billCutoff = addDays(today, -10);
+  let bills = 0;
+  for (const [si, sup] of suppliers.entries()) {
+    const mine = allLoads.filter((l) => l.supplierId === sup.id && l.entryDate <= billCutoff);
+    let first = true;
+    for (let from = start; from <= billCutoff; from = addDays(from, 15)) {
+      const to = addDays(from, 14) < billCutoff ? addDays(from, 14) : billCutoff;
+      const loads = mine.filter((l) => l.entryDate >= from && l.entryDate <= to);
+      if (!loads.length) continue;
+      const billDate = addDays(to, 1);
+      const kgByMaterial = new Map<number, number>();
+      for (const l of loads) kgByMaterial.set(l.materialId, (kgByMaterial.get(l.materialId) ?? 0) + l.netKg);
+      const items = [...kgByMaterial].map(([materialId, kg]) => {
+        const code = mats.find((x) => x.id === materialId)!.code;
+        return { productId: materialId, quantity: Math.round(kg) / 1000, rate: RATE[code] + si * 20, gstRate: GST[code] };
+      });
+      const totals = computeInvoiceTotals({ items, transportCharges: 0, taxType: "intra" });
+      const [bill] = await dbx
+        .insert(s.purchaseBills)
+        .values({
+          billNo: nextNo(DOC_PREFIX.purchaseBill, billDate),
+          supplierBillNo: `${sup.name.slice(0, 3).toUpperCase()}/${int(100, 999)}`,
+          billDate,
+          dueDate: addDays(billDate, 30),
+          supplierId: sup.id,
+          taxType: "intra",
+          subtotal: totals.subtotal,
+          cgst: totals.cgst,
+          sgst: totals.sgst,
+          roundOff: totals.roundOff,
+          total: totals.total,
+          createdBy: owner.id,
+          createdAt: at(billDate, 11),
+        })
+        .returning({ id: s.purchaseBills.id });
+      bills++;
+      await dbx.insert(s.purchaseBillItems).values(
+        totals.lines.map((l) => ({
+          billId: bill.id,
+          materialId: l.productId,
+          quantityKg: round2(l.quantity * 1000),
+          ratePerTon: l.rate,
+          gstRate: l.gstRate,
+          amount: l.amount,
+        })),
+      );
+      for (const line of totals.lines) {
+        const ids = loads.filter((l) => l.materialId === line.productId).map((l) => l.id);
+        await dbx
+          .update(s.inboundEntries)
+          .set({ purchaseBillId: bill.id, ratePerTon: line.rate, amount: sql`round(${s.inboundEntries.netKg} / 1000 * ${line.rate}, 2)` })
+          .where(inArray(s.inboundEntries.id, ids));
+      }
+
+      // The first fly ash bill had a short-weight credit from the supplier; we paid the rest.
+      let credit = 0;
+      if (first && si === 0) {
+        credit = 1500;
+        await dbx.insert(s.supplierNotes).values({
+          noteNo: nextNo(DOC_PREFIX.supplierCredit, addDays(billDate, 2)),
+          type: "credit",
+          noteDate: addDays(billDate, 2),
+          supplierId: sup.id,
+          billId: bill.id,
+          amount: credit,
+          reason: "short_weight",
+          description: "Weighbridge showed 2.1 t less on two loads",
+          createdBy: owner.id,
+        });
+      }
+      first = false;
+
+      // Older bills are paid in full (and closed once settled for a while); newer ones part-paid or not yet.
+      const age = daysBetween(billDate, today);
+      const due = round2(totals.total - credit);
+      const paid = age > 30 ? due : age > 18 ? roundTo(due * 0.5, 1000) : 0;
+      if (paid > 0) {
+        const payDate = addDays(billDate, age > 30 ? int(20, 28) : int(5, 10));
+        await dbx.insert(s.supplierPayments).values({
+          voucherNo: nextNo(DOC_PREFIX.supplierPayment, payDate),
+          paymentDate: payDate,
+          supplierId: sup.id,
+          billId: bill.id,
+          amount: paid,
+          mode: pick(["bank", "bank", "upi", "cheque"] as const),
+          reference: `UTR${int(10000000, 99999999)}`,
+          createdBy: owner.id,
+          createdAt: at(payDate, 15),
+        });
+      }
+      if (paid === due && age > 45) {
+        await dbx.update(s.purchaseBills).set({ closedAt: at(addDays(billDate, 32), 18), closedBy: owner.id }).where(eq(s.purchaseBills.id, bill.id));
+      }
+    }
+  }
+  // An extra unloading charge on the newest M sand bill
+  const [lastSand] = await dbx
+    .select({ id: s.purchaseBills.id, supplierId: s.purchaseBills.supplierId, billDate: s.purchaseBills.billDate })
+    .from(s.purchaseBills)
+    .where(eq(s.purchaseBills.supplierId, suppliers[2].id))
+    .orderBy(sql`${s.purchaseBills.billDate} desc`)
+    .limit(1);
+  if (lastSand) {
+    await dbx.insert(s.supplierNotes).values({
+      noteNo: nextNo(DOC_PREFIX.supplierDebit, lastSand.billDate),
+      type: "debit",
+      noteDate: lastSand.billDate,
+      supplierId: lastSand.supplierId,
+      billId: lastSand.id,
+      amount: 2500,
+      reason: "transport",
+      description: "JCB unloading charges",
       createdBy: owner.id,
     });
   }
@@ -493,7 +632,7 @@ async function seedDemo(dbx: Db) {
   }
 
   console.log(
-    `✓ Demo data: ${customers.length} customers, ${openInvoices.length} invoices, ${start} → ${today}.`,
+    `✓ Demo data: ${customers.length} customers, ${openInvoices.length} orders (${completed} completed), ${bills} supplier bills, ${start} → ${today}.`,
   );
 }
 

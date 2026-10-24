@@ -22,6 +22,13 @@
       "when": 1791609042912,
       "tag": "0002_truck_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792673036459,
+      "tag": "0003_purchases_and_closing",
+      "breakpoints": true
     }
   ]
 }

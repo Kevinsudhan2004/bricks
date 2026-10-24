@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { Download, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataSheet, SheetDetails, type SheetColumn } from "@/components/common/data-sheet";
 import { EmptyState } from "@/components/common/empty-state";
+import { Pill } from "@/components/common/status-badge";
 import { DeleteButton } from "@/components/forms/delete-button";
 import { materialColor } from "@/lib/colors";
 import { formatDay, formatINR, formatNumber, formatTime, formatTonnes } from "@/lib/format";
@@ -83,6 +85,21 @@ export function InboundTable({
             cell: (r) => (r.amount ? formatINR(r.amount, { decimals: false }) : <Dash />),
             total: (rs) => formatINR(rs.reduce((a, r) => a + (r.amount ?? 0), 0), { decimals: false }),
           },
+          {
+            id: "bill",
+            header: "Supplier bill",
+            sortValue: (r) => r.billNo ?? "",
+            cell: (r) =>
+              r.purchaseBillId ? (
+                <Link href={`/purchases/${r.purchaseBillId}`} className="font-mono text-xs hover:text-primary hover:underline">
+                  {r.billNo}
+                </Link>
+              ) : r.supplierId ? (
+                <Pill tone="info">Not billed</Pill>
+              ) : (
+                <Dash />
+              ),
+          },
         ] satisfies SheetColumn<Row>[])
       : []),
     {
@@ -144,6 +161,7 @@ export function InboundTable({
               ? ([
                   ["Rate / tonne", r.ratePerTon ? formatINR(r.ratePerTon) : null],
                   ["Amount", r.amount ? formatINR(r.amount) : null],
+                  ["Supplier bill", r.billNo ?? (r.supplierId ? "Not billed yet" : null)],
                 ] satisfies [string, React.ReactNode][])
               : []),
             ["Remarks", r.remarks],

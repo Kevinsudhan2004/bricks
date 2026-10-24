@@ -21,10 +21,15 @@ export async function saveSupplier(id: number | null, input: unknown): Promise<A
     if (dupe) throw new UserError("A supplier with this name already exists.", { name: "Already added" });
 
     let active = data.active;
+    // Employees never see money: they can't set or change the opening balance.
+    let openingBalance = user.role === "owner" ? (data.openingBalance ?? 0) : 0;
     if (id) {
       const [existing] = await db.select().from(suppliers).where(eq(suppliers.id, id));
       if (!existing) throw new UserError("Supplier not found.");
-      if (user.role !== "owner") active = existing.active;
+      if (user.role !== "owner") {
+        active = existing.active;
+        openingBalance = existing.openingBalance;
+      }
     } else {
       active = true;
     }
@@ -34,6 +39,7 @@ export async function saveSupplier(id: number | null, input: unknown): Promise<A
       phone: data.phone ?? null,
       gstin: data.gstin ?? null,
       address: data.address ?? null,
+      openingBalance,
       active,
     };
     const savedId = await db.transaction(async (tx) => {
@@ -49,7 +55,7 @@ export async function saveSupplier(id: number | null, input: unknown): Promise<A
       });
       return rowId!;
     });
-    expire(TAG.masters);
+    expire(TAG.masters, TAG.purchases);
     return { ok: true, data: { id: savedId }, message: id ? `${data.name} saved` : `${data.name} added` };
   });
 }

@@ -5,11 +5,13 @@ import { db } from "@/db";
 import { adjustmentNotes, companySettings, customers, dispatchItems, dispatches, invoiceItems, invoices, payments, products } from "@/db/schema";
 import { addDays } from "@/domain/dates";
 import { computeInvoiceTotals } from "@/domain/invoice";
+import { orderCloseBlocker } from "@/domain/settlement";
 import { actionUser } from "@/lib/auth";
 import { formatINR, formatNumber } from "@/lib/format";
-import { deleteSchema, invoiceSchema, type InvoiceData } from "@/lib/validators";
+import { closeSchema, deleteSchema, invoiceSchema, type InvoiceData } from "@/lib/validators";
 import { expire, parseInput, runAction, UserError, type ActionResult } from "@/server/action-utils";
 import { audit } from "@/server/audit";
+import { lockOrderForChange, orderPosition } from "@/server/closing";
 import { nextDocNumber } from "@/server/doc-numbers";
 import { assertCanModifyEntry } from "@/server/permissions";
 import type { SessionUser } from "@/lib/session";
@@ -146,6 +148,7 @@ export async function updateInvoice(id: number, input: unknown): Promise<ActionR
     const [existing] = await db.select().from(invoices).where(eq(invoices.id, id));
     if (!existing) throw new UserError("Order not found.");
     if (existing.status === "cancelled") throw new UserError("A cancelled order can't be edited.");
+    if (existing.closedAt) throw new UserError(`Order ${existing.invoiceNo} is completed. Reopen it first to edit it.`);
     assertCanModifyEntry(user, existing);
     const { prods, customer } = await validateRefs(parsed);
     const existingItems = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, id));
@@ -191,6 +194,7 @@ export async function updateInvoice(id: number, input: unknown): Promise<ActionR
 
     const totals = computeInvoiceTotals({ items: data.items, transportCharges: data.transportCharges, taxType: data.taxType });
     await db.transaction(async (tx) => {
+      await lockOrderForChange(tx, id);
       await tx
         .update(invoices)
         .set({
@@ -243,6 +247,7 @@ export async function cancelInvoice(input: unknown): Promise<ActionResult> {
     const [existing] = await db.select().from(invoices).where(eq(invoices.id, id));
     if (!existing) throw new UserError("Order not found.");
     if (existing.status === "cancelled") throw new UserError("This order is already cancelled.");
+    if (existing.closedAt) throw new UserError("A completed order can't be cancelled. Reopen it first.");
     const [counts] = await db
       .select({
         dispatches: sql<number>`(select count(*) from ${dispatches} where invoice_id = ${id} and deleted_at is null)::int`,
@@ -268,5 +273,83 @@ export async function cancelInvoice(input: unknown): Promise<ActionResult> {
     });
     expire(TAG.invoices);
     return { ok: true, data: null, message: `Order ${existing.invoiceNo} cancelled` };
+  });
+}
+
+/**
+ * Mark orders completed. Each one must be fully delivered with debit = credit
+ * (order total + debit notes = payments + credit notes). One order: a blocked close
+ * is an error. Several ("Close all ready"): the ready ones close, the rest are reported.
+ */
+export async function closeInvoices(input: unknown): Promise<ActionResult<{ closed: number; skipped: number }>> {
+  return runAction(async () => {
+    const user = await actionUser(["owner"]);
+    const { ids } = parseInput(closeSchema, input);
+    const result = await db.transaction(async (tx) => {
+      const closed: string[] = [];
+      const skipped: { invoiceNo: string; reason: string }[] = [];
+      for (const id of new Set(ids)) {
+        const pos = await orderPosition(tx, id);
+        if (!pos) {
+          skipped.push({ invoiceNo: `#${id}`, reason: "Order not found." });
+          continue;
+        }
+        const { invoice } = pos;
+        const reason = orderCloseBlocker({
+          cancelled: invoice.status === "cancelled",
+          closed: !!invoice.closedAt,
+          pending: pos.pending,
+          balance: pos.balance,
+        });
+        if (reason) {
+          skipped.push({ invoiceNo: invoice.invoiceNo, reason });
+          continue;
+        }
+        await tx.update(invoices).set({ closedAt: new Date(), closedBy: user.id, updatedAt: new Date() }).where(eq(invoices.id, id));
+        await audit(tx, {
+          userId: user.id,
+          action: "close",
+          entity: "invoice",
+          entityId: id,
+          summary: `Completed order ${invoice.invoiceNo}: ${formatINR(pos.total + pos.debits)} billed = ${formatINR(pos.paid + pos.credits)} received`,
+          after: { paid: pos.paid, credits: pos.credits, debits: pos.debits },
+        });
+        closed.push(invoice.invoiceNo);
+      }
+      return { closed, skipped };
+    });
+
+    if (result.closed.length === 0 && result.skipped.length === 1) throw new UserError(result.skipped[0].reason);
+    if (result.closed.length) expire(TAG.invoices);
+    const message =
+      result.closed.length === 1 && result.skipped.length === 0
+        ? `Order ${result.closed[0]} completed`
+        : `${result.closed.length} order${result.closed.length === 1 ? "" : "s"} completed${result.skipped.length ? `, ${result.skipped.length} not ready` : ""}`;
+    return { ok: true, data: { closed: result.closed.length, skipped: result.skipped.length }, message };
+  });
+}
+
+/** Put a completed order back to ongoing (e.g. a payment was entered wrongly). The reason goes in the audit log. */
+export async function reopenInvoice(input: unknown): Promise<ActionResult> {
+  return runAction(async () => {
+    const user = await actionUser(["owner"]);
+    const { id, reason } = parseInput(deleteSchema, input);
+    const invoiceNo = await db.transaction(async (tx) => {
+      const [inv] = await tx.select().from(invoices).where(eq(invoices.id, id)).for("update");
+      if (!inv) throw new UserError("Order not found.");
+      if (!inv.closedAt) throw new UserError("This order is not completed.");
+      await tx.update(invoices).set({ closedAt: null, closedBy: null, updatedAt: new Date() }).where(eq(invoices.id, id));
+      await audit(tx, {
+        userId: user.id,
+        action: "reopen",
+        entity: "invoice",
+        entityId: id,
+        summary: `Reopened order ${inv.invoiceNo}: ${reason}`,
+        before: { closedAt: inv.closedAt, closedBy: inv.closedBy },
+      });
+      return inv.invoiceNo;
+    });
+    expire(TAG.invoices);
+    return { ok: true, data: null, message: `Order ${invoiceNo} is ongoing again` };
   });
 }

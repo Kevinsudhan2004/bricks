@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { Store } from "lucide-react";
 import { DataSheet, type SheetColumn } from "@/components/common/data-sheet";
 import { EmptyState } from "@/components/common/empty-state";
 import { Pill } from "@/components/common/status-badge";
-import { formatDay, formatNumber, formatTonnes } from "@/lib/format";
+import { formatDay, formatINR, formatNumber, formatTonnes } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { EditSupplierButton } from "./supplier-forms";
 
 export type SupplierRow = {
@@ -14,6 +16,9 @@ export type SupplierRow = {
   gstin: string | null;
   address: string | null;
   active: boolean;
+  openingBalance: number;
+  /** What we owe the supplier (owner only; null for employees). */
+  payable: number | null;
   /** Last 30 days */
   kg: number;
   loads: number;
@@ -30,11 +35,37 @@ export function SupplierTable({ rows, today, isOwner }: { rows: SupplierRow[]; t
       sortValue: (s) => s.name.toLowerCase(),
       cell: (s) => (
         <span className="flex items-center gap-1.5">
-          <span className="truncate font-medium">{s.name}</span>
+          {isOwner ? (
+            <Link href={`/suppliers/${s.id}`} className="truncate font-medium hover:text-primary hover:underline">
+              {s.name}
+            </Link>
+          ) : (
+            <span className="truncate font-medium">{s.name}</span>
+          )}
           {!s.active && <Pill>Hidden</Pill>}
         </span>
       ),
     },
+    ...(isOwner
+      ? ([
+          {
+            id: "payable",
+            header: "To pay",
+            align: "right",
+            sortValue: (s) => s.payable ?? 0,
+            cell: (s) =>
+              s.payable ? (
+                <span className={cn("font-semibold", s.payable < 0 && "text-success")}>
+                  {formatINR(Math.abs(s.payable), { decimals: false })}
+                  {s.payable < 0 ? " adv" : ""}
+                </span>
+              ) : (
+                <Dash />
+              ),
+            total: (rs) => formatINR(rs.reduce((a, s) => a + Math.max(s.payable ?? 0, 0), 0), { decimals: false }),
+          },
+        ] satisfies SheetColumn<SupplierRow>[])
+      : []),
     {
       id: "phone",
       header: "Phone",
@@ -76,7 +107,14 @@ export function SupplierTable({ rows, today, isOwner }: { rows: SupplierRow[]; t
         <EditSupplierButton
           id={s.id}
           isOwner={isOwner}
-          initial={{ name: s.name, phone: s.phone ?? "", gstin: s.gstin ?? "", address: s.address ?? "", active: s.active }}
+          initial={{
+            name: s.name,
+            phone: s.phone ?? "",
+            gstin: s.gstin ?? "",
+            address: s.address ?? "",
+            openingBalance: isOwner && s.openingBalance ? s.openingBalance : "",
+            active: s.active,
+          }}
         />
       ),
     },

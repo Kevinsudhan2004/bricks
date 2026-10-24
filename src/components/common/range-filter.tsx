@@ -131,7 +131,7 @@ export function ChipFilter({
         const active = (value ?? "") === o.value;
         return (
           <Link
-            key={o.value || "all"}
+            key={o.value || "__all"}
             href={buildHref(pathname, params, { [name]: o.value || undefined })}
             scroll={false}
             className={cn(

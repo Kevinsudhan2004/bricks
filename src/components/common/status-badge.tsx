@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { DeliveryStatus, PaymentStatus } from "@/domain/invoice";
+import type { DocState } from "@/domain/settlement";
 
 const base = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
 
@@ -17,6 +18,40 @@ const paymentStyles: Record<PaymentStatus, { label: string; className: string }>
   overdue: { label: "Overdue", className: "bg-destructive/12 text-destructive" },
   cancelled: { label: "Cancelled", className: "bg-muted text-muted-foreground" },
 };
+
+/** Orders are "completed", supplier bills are "closed"; both mean debit and credit matched. */
+const stateLabels = {
+  order: { ongoing: "Ongoing", ready: "Ready to complete", closed: "Completed", cancelled: "Cancelled" },
+  bill: { ongoing: "Ongoing", ready: "Ready to close", closed: "Closed", cancelled: "Cancelled" },
+} as const;
+
+const stateStyles = {
+  ongoing: "bg-primary/10 text-primary",
+  ready: "bg-success/12 text-success ring-1 ring-success/30",
+  closed: "bg-foreground/8 text-foreground",
+  cancelled: "bg-muted text-muted-foreground line-through",
+} as const;
+
+export function StateBadge({
+  state,
+  ready = false,
+  kind = "order",
+  className,
+}: {
+  state: DocState;
+  /** Ongoing but debit = credit (and, for orders, fully delivered). */
+  ready?: boolean;
+  kind?: "order" | "bill";
+  className?: string;
+}) {
+  const key = state === "ongoing" && ready ? "ready" : state;
+  return (
+    <span className={cn(base, stateStyles[key], className)}>
+      <Dot />
+      {stateLabels[kind][key]}
+    </span>
+  );
+}
 
 function Dot() {
   return <span aria-hidden className="size-1.5 rounded-full bg-current" />;

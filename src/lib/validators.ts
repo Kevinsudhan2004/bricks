@@ -226,6 +226,73 @@ export const noteSchema = z.object({
 });
 export type NoteInput = z.input<typeof noteSchema>;
 
+/** Close one or more orders / supplier bills (each must have debit = credit). */
+export const closeSchema = z.object({ ids: z.array(id).min(1, "Pick at least one").max(500, "Close at most 500 at a time") });
+
+/* ------------------------------------------------------------------ */
+/* Purchases: supplier bills, payments to suppliers, supplier notes    */
+/* ------------------------------------------------------------------ */
+
+export const purchaseBillSchema = z.object({
+  supplierId: z.coerce.number({ error: "Pick a supplier" }).int().positive("Pick a supplier"),
+  supplierBillNo: optionalText(40),
+  billDate: isoDate,
+  dueDate: z.preprocess(blankToUndefined, isoDate.optional()),
+  taxType: z.enum(["intra", "inter"]),
+  transportCharges: optionalNumber({ label: "Transport charges", max: 10_000_000 }),
+  notes: optionalText(1000),
+  items: z
+    .array(
+      z.object({
+        materialId: id,
+        quantityTonnes: z.preprocess(
+          toNumber,
+          z.number({ error: "Enter the tonnes" }).positive("Enter the tonnes").max(100_000, "Too large"),
+        ),
+        ratePerTon: requiredNumber("Rate", { positive: true, max: 1_000_000 }),
+        gstRate: z.preprocess((v) => toNumber(v) ?? 0, z.number({ error: "GST % must be a number" }).min(0, "Can't be negative").max(28, "At most 28%")),
+      }),
+    )
+    .min(1, "Add at least one material"),
+  /** Inbound loads this bill charges for. */
+  loadIds: z.array(id).max(1000).default([]),
+});
+export type PurchaseBillInput = z.input<typeof purchaseBillSchema>;
+export type PurchaseBillData = z.output<typeof purchaseBillSchema>;
+
+export const supplierPaymentSchema = z.object({
+  supplierId: z.coerce.number({ error: "Pick a supplier" }).int().positive("Pick a supplier"),
+  billId: optionalId,
+  paymentDate: isoDate,
+  amount: requiredNumber("Amount", { positive: true, max: 1e10 }),
+  mode: z.enum(["cash", "upi", "bank", "cheque", "other"]),
+  reference: optionalText(80),
+  remarks: optionalText(500),
+});
+export type SupplierPaymentInput = z.input<typeof supplierPaymentSchema>;
+
+/** Credit reduces what we owe the supplier, debit adds to it. */
+export const SUPPLIER_NOTE_REASONS = {
+  short_weight: "Short weight",
+  quality: "Poor quality / rejected",
+  rate_difference: "Rate difference",
+  discount: "Discount",
+  return: "Material returned",
+  transport: "Extra transport / unloading",
+  other: "Other",
+} as const;
+
+export const supplierNoteSchema = z.object({
+  type: z.enum(["credit", "debit"]),
+  supplierId: z.coerce.number({ error: "Pick a supplier" }).int().positive("Pick a supplier"),
+  billId: optionalId,
+  noteDate: isoDate,
+  amount: requiredNumber("Amount", { positive: true, max: 1e10 }),
+  reason: z.enum(Object.keys(SUPPLIER_NOTE_REASONS) as [keyof typeof SUPPLIER_NOTE_REASONS, ...(keyof typeof SUPPLIER_NOTE_REASONS)[]]),
+  description: optionalText(500),
+});
+export type SupplierNoteInput = z.input<typeof supplierNoteSchema>;
+
 /* ------------------------------------------------------------------ */
 /* Stock adjustment                                                    */
 /* ------------------------------------------------------------------ */
@@ -313,6 +380,8 @@ export const supplierSchema = z.object({
   phone,
   gstin,
   address: optionalText(400),
+  /** Owner only: what we already owed the supplier before using the app. */
+  openingBalance: optionalNumber({ label: "Opening balance", min: -1e10 }),
   active: z.boolean(),
 });
 export type SupplierInput = z.input<typeof supplierSchema>;
